@@ -27,6 +27,7 @@ let collectionPage = 0;
 let sortingAlgorithm = "Sort by Set";
 let filteredSets = [];
 let filteredMana = [];
+let filteredRarity = [];
 let orderedSets;
 
 //
@@ -214,6 +215,32 @@ function openCollectionTab() {
   });
   filters.appendChild(manas);
 
+  let rarityFilter = createDivision(["sets_container"]);
+  let rarities = [
+    {key:"wc_common", display:"Common", rarity:"common"},
+    {key:"wc_uncommon", display:"Uncommon", rarity:"uncommon"},
+    {key:"wc_rare", display:"Rare", rarity:"rare"},
+    {key:"wc_mythic", display:"Mythic Rare", rarity:"mythic"}
+  ];
+  rarities.forEach(function(r, i) {
+    let buttonRarity = createDivision(["rarity_filter_search", "rarity_filter_on"]);
+    buttonRarity.style.backgroundImage = `url(../images/${r.key}.png)`;
+    buttonRarity.title = r.display;
+    buttonRarity.addEventListener("click", () => {
+      if (!buttonRarity.classList.toggle("rarity_filter_on")) {
+        filteredRarity.push(r.rarity);
+      } else {
+        let n = filteredRarity.indexOf(r.rarity);
+        if (n > -1) {
+          filteredRarity.splice(n, 1);
+        }
+      }
+    });
+    rarityFilter.appendChild(buttonRarity);
+  });
+  filters.appendChild(rarityFilter);
+
+
   let main_but_cont = createDivision(["main_buttons_container"]);
   let cont = createDivision(["buttons_container"]);
 
@@ -236,33 +263,6 @@ function openCollectionTab() {
     false
   );
   addCheckboxSearch(cont, "Exclude unselected colors", "query_exclude", false);
-  main_but_cont.appendChild(cont);
-
-  cont = createDivision(["buttons_container"]);
-  addCheckboxSearch(
-    cont,
-    '<div class="wc_common wc_search_icon"></div>Common',
-    "query_common",
-    true
-  );
-  addCheckboxSearch(
-    cont,
-    '<div class="wc_uncommon wc_search_icon"></div>Uncommon',
-    "query_uncommon",
-    true
-  );
-  addCheckboxSearch(
-    cont,
-    '<div class="wc_rare wc_search_icon"></div>Rare',
-    "query_rare",
-    true
-  );
-  addCheckboxSearch(
-    cont,
-    '<div class="wc_mythic wc_search_icon"></div>Mythic Rare',
-    "query_mythic",
-    true
-  );
   main_but_cont.appendChild(cont);
 
   cont = createDivision(["buttons_container"]);
@@ -376,6 +376,7 @@ function expandFilters() {
 function resetFilters() {
   filteredSets = [];
   filteredMana = [];
+  filteredRarity = [];
 
   $$(".set_filter").forEach(div => {
     div.classList.remove("set_filter_on");
@@ -385,6 +386,10 @@ function resetFilters() {
     div.classList.remove("mana_filter_on");
     div.classList.add("mana_filter_on");
   });
+  $$(".rarity_filter_search").forEach(div => {
+    div.classList.remove("rarity_filter_on");
+    div.classList.add("rarity_filter_on");
+  });
 
   document.getElementById("query_name").value = "";
   document.getElementById("query_type").value = "";
@@ -392,11 +397,6 @@ function resetFilters() {
   document.getElementById("query_new").checked = false;
   document.getElementById("query_multicolor").checked = false;
   document.getElementById("query_exclude").checked = false;
-
-  document.getElementById("query_common").checked = true;
-  document.getElementById("query_uncommon").checked = true;
-  document.getElementById("query_rare").checked = true;
-  document.getElementById("query_mythic").checked = true;
 
   document.getElementById("query_cmc").value = "";
   document.getElementById("query_cmclower").checked = false;
@@ -607,11 +607,6 @@ function printCards() {
   let filterMulti = document.getElementById("query_multicolor");
   let filterExclude = document.getElementById("query_exclude");
 
-  let filterCommon = document.getElementById("query_common");
-  let filterUncommon = document.getElementById("query_uncommon");
-  let filterRare = document.getElementById("query_rare");
-  let filterMythic = document.getElementById("query_mythic");
-
   let filterCMC = document.getElementById("query_cmc").value;
   let filterCmcLower = document.getElementById("query_cmclower").checked;
   let filterCmcEqual = document.getElementById("query_cmcequal").checked;
@@ -708,11 +703,11 @@ function printCards() {
       }
     }
 
-    if (rarity == "land" && !filterCommon.checked) doDraw = false;
-    if (rarity == "common" && !filterCommon.checked) doDraw = false;
-    if (rarity == "uncommon" && !filterUncommon.checked) doDraw = false;
-    if (rarity == "rare" && !filterRare.checked) doDraw = false;
-    if (rarity == "mythic" && !filterMythic.checked) doDraw = false;
+    if (filteredRarity.length > 0) {
+      if ((rarity == "land" && !filteredRarity.includes("common")) || !filteredRarity.includes(rarity)) {
+        doDraw = false;
+      }
+    }
 
     if (filterExclude.checked && cost.length == 0) {
       doDraw = false;

@@ -1613,7 +1613,7 @@ a:hover {
     opacity: 1;
     background-repeat: no-repeat;
     width: 48px;
-    padding: 16px;
+    padding: 0 16px;
     height: 32px;
     cursor: pointer;
     background-position: center;
@@ -1632,6 +1632,26 @@ a:hover {
 
 .mana_filter_on, .rank_filter_on {
     opacity: 0.4;
+}
+
+.rarity_filter_search {
+    opacity: 1;
+    background-repeat: no-repeat;
+    width: 48px;
+    padding: 16px 16px 0 16px;
+    height: 32px;
+    cursor: pointer;
+    background-position: center;
+    background-size: 32px;
+    -webkit-transition: all .3s ease-in-out;
+}
+
+.rarity_filter:hover, .rarity_filter_search:hover {
+    opacity: 1;
+}
+
+.rarity_filter_on {
+    opacity: 0.3;
 }
 
 .rank_filter {

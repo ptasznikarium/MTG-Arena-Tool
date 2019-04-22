@@ -7,3 +7,4 @@ main.sublime-project
 *.sublime-settings
 .vscode
 .DS_Store
+/.vs
