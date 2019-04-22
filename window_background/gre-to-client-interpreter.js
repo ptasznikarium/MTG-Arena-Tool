@@ -190,10 +190,9 @@ annotationFunctions.AnnotationType_ZoneTransfer = function(ann, details) {
   // A card is returned to a zone
   if (details.category == "Return") {
     let zone = currentMatch.zones[details.zone_dest].type;
-    let obj = instanceIdToObject(ann.affectedIds[0]);
-    let grpId = obj.grpId;
+    let affected = instanceIdToObject(ann.affectedIds[0]);
     let affector = instanceIdToObject(ann.affectorId);
-    let seat = obj.ownerSeatId;
+
     let text = getNameBySeat(seat);
     if (affector.type == "GameObjectType_Ability") {
       text = `${actionLogGenerateLink(
@@ -203,16 +202,41 @@ annotationFunctions.AnnotationType_ZoneTransfer = function(ann, details) {
     if (affector.type == "GameObjectType_Card") {
       text = actionLogGenerateLink(affector.grpId);
     }
+
+    let seat = affected.ownerSeatId;
     actionLog(
       seat,
       false,
-      `${text} returned ${actionLogGenerateLink(grpId)} to ${zone}`
+      `${text} returned ${actionLogGenerateLink(affected.grpId)} to ${zone}`
     );
+  }
+
+  // Saw this one when Lava coil exiled a creature (??)
+  if (details.category == "SBA_Damage") {
+    //
   }
 
   // A spell or ability counters something
   if (details.category == "Countered") {
-    //
+    let affector = instanceIdToObject(ann.affectorId);
+    let affected = instanceIdToObject(ann.affectedIds[0]);
+
+    let text = "";
+    if (affector.type == "GameObjectType_Ability") {
+      text = `${actionLogGenerateLink(
+        affector.objectSourceGrpId
+      )}'s ${actionLogGenerateAbilityLink(affector.grpId)}`;
+    }
+    if (affector.type == "GameObjectType_Card") {
+      text = actionLogGenerateLink(affector.grpId);
+    }
+
+    let seat = affector.ownerSeatId;
+    actionLog(
+      seat,
+      false,
+      `${text} countered ${actionLogGenerateLink(affected.grpId)}`
+    );
   }
 
   // A spell or ability destroys something

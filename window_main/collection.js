@@ -382,7 +382,7 @@ function resetFilters() {
     div.classList.remove("set_filter_on");
     div.classList.add("set_filter_on");
   });
-  $$(".mana_filter").forEach(div => {
+  $$(".mana_filter_search").forEach(div => {
     div.classList.remove("mana_filter_on");
     div.classList.add("mana_filter_on");
   });
