@@ -227,13 +227,16 @@ function openCollectionTab() {
 
   let rarityFilter = createDivision(["sets_container"]);
   let rarities = [
-    {key:"wc_common", display:"Common", rarity:"common"},
-    {key:"wc_uncommon", display:"Uncommon", rarity:"uncommon"},
-    {key:"wc_rare", display:"Rare", rarity:"rare"},
-    {key:"wc_mythic", display:"Mythic Rare", rarity:"mythic"}
+    { key: "wc_common", display: "Common", rarity: "common" },
+    { key: "wc_uncommon", display: "Uncommon", rarity: "uncommon" },
+    { key: "wc_rare", display: "Rare", rarity: "rare" },
+    { key: "wc_mythic", display: "Mythic Rare", rarity: "mythic" }
   ];
   rarities.forEach(function(r, i) {
-    let buttonRarity = createDivision(["rarity_filter_search", "rarity_filter_on"]);
+    let buttonRarity = createDivision([
+      "rarity_filter_search",
+      "rarity_filter_on"
+    ]);
     buttonRarity.style.backgroundImage = `url(../images/${r.key}.png)`;
     buttonRarity.title = r.display;
     buttonRarity.addEventListener("click", () => {
@@ -249,7 +252,6 @@ function openCollectionTab() {
     rarityFilter.appendChild(buttonRarity);
   });
   filters.appendChild(rarityFilter);
-
 
   let main_but_cont = createDivision(["main_buttons_container"]);
   let cont = createDivision(["buttons_container"]);
@@ -786,8 +788,11 @@ function printCards() {
     }
 
     if (filteredRarity.length > 0) {
-      if ((rarity == "land" && !filteredRarity.includes("common")) || !filteredRarity.includes(rarity)) {
-        doDraw = false;
+      if (
+        (rarity == "land" && !filteredRarity.includes("common")) ||
+        !filteredRarity.includes(rarity)
+      ) {
+        continue;
       }
     }
 
