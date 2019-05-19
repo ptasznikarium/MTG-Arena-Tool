@@ -1,300 +1,268 @@
 /*
 global
-	decks,
-	sidebarActive,
-	cardsDb,
-	sort_decks,
-	cards,
-	getDeckWinrate,
-	open_deck,
-	tags_colors,
-	ipc_send,
-	selectAdd,
-  getBoosterCountEstimate
+  Aggregator,
+  allMatches,
+  createDivision,
+  decks,
+  economyHistory,
+  FilterPanel,
+  formatPercent,
+  get_deck_missing,
+  getBoosterCountEstimate,
+  getDeck,
+  getReadableFormat,
+  hideLoadingBars,
+  getWinrateClass,
+  ipc_send,
+  makeResizable,
+  mana,
+  ListItem,
+  openDeck,
+  orderedCardRarities,
+  sidebarActive,
+  sidebarSize,
+  sort_decks,
+  getTagColor,
+  setTagColor,
+  StatsPanel
 */
 
-let filterTag = "All";
+let filters = Aggregator.getDefaultFilters();
+filters.onlyCurrentDecks = true;
+
+function setFilters(selected = {}) {
+  if (selected.eventId || selected.date) {
+    // clear all dependent filters
+    filters = {
+      ...Aggregator.getDefaultFilters(),
+      date: filters.date,
+      eventId: filters.eventId,
+      onlyCurrentDecks: true,
+      showArchived: filters.showArchived,
+      ...selected
+    };
+  } else {
+    // default case
+    filters = { ...filters, ...selected };
+  }
+}
 
 //
-function open_decks_tab() {
+function openDecksTab(_filters = {}) {
   if (sidebarActive == 0 && decks != null) {
-    sort_decks();
+    hideLoadingBars();
     var mainDiv = document.getElementById("ux_0");
-    mainDiv.classList.remove("flex_item");
+    mainDiv.classList.add("flex_item");
     mainDiv.innerHTML = "";
+    setFilters(_filters);
+
+    const wrap_r = createDivision(["wrapper_column", "sidebar_column_l"]);
+    wrap_r.style.width = sidebarSize + "px";
+    wrap_r.style.flex = `0 0 ${sidebarSize}px`;
+    const aggregator = new Aggregator(filters);
+    const statsPanel = new StatsPanel(
+      "decks_top",
+      aggregator,
+      sidebarSize,
+      true
+    );
+    const decks_top_winrate = statsPanel.render();
+    decks_top_winrate.style.display = "flex";
+    decks_top_winrate.style.flexDirection = "column";
+    decks_top_winrate.style.marginTop = "16px";
+    decks_top_winrate.style.padding = "12px";
+
+    let drag = createDivision(["dragger"]);
+    wrap_r.appendChild(drag);
+    const finalCallback = width => {
+      ipc_send("save_user_settings", { right_panel_width: width });
+    };
+    makeResizable(drag, statsPanel.handleResize, finalCallback);
+
+    wrap_r.appendChild(decks_top_winrate);
+
+    const wrap_l = createDivision(["wrapper_column"]);
+    wrap_l.setAttribute("id", "decks_column");
+
     var d = document.createElement("div");
     d.classList.add("list_fill");
-    mainDiv.appendChild(d);
+    wrap_l.appendChild(d);
+
+    mainDiv.appendChild(wrap_l);
+    mainDiv.appendChild(wrap_r);
 
     // Tags and filters
     let decks_top = document.createElement("div");
     decks_top.classList.add("decks_top");
 
-    let decks_top_filter = document.createElement("div");
-    decks_top_filter.classList.add("decks_top_filter");
-
-    let tags_list = [];
-    decks.forEach(function(deck) {
-      if (deck.tags) {
-        deck.tags.forEach(tag => {
-          if (tags_list.indexOf(tag) == -1) {
-            tags_list.push(tag);
-          }
-        });
-      }
-    });
-
-    var select = $('<select id="query_select"></select>');
-    if (filterTag != "All") {
-      select.append('<option value="All">All</option>');
-    }
-    tags_list.forEach(tag => {
-      if (tag !== filterTag) {
-        select.append('<option value="' + tag + '">' + tag + "</option>");
-      }
-      //reateTag(tag, decks_top, false);
-    });
-    decks_top_filter.appendChild(select[0]);
-    selectAdd(select, filterDecks);
-    select.next("div.select-styled").text(filterTag);
-
-    let decks_top_winrate = document.createElement("div");
-    decks_top_winrate.classList.add("decks_top_winrate");
+    const tags = Aggregator.gatherTags(decks);
+    const filterPanel = new FilterPanel(
+      "decks_top",
+      selected => openDecksTab(selected),
+      filters,
+      allMatches.events,
+      tags,
+      [],
+      true,
+      [],
+      false,
+      null,
+      true
+    );
+    const decks_top_filter = filterPanel.render();
 
     decks_top.appendChild(decks_top_filter);
-    decks_top.appendChild(decks_top_winrate);
-    mainDiv.appendChild(decks_top);
+    wrap_l.appendChild(decks_top);
 
-    let wrTotalWins = 0;
-    let wrTotalLosses = 0;
-    let wrTotal = 0;
-    decks.forEach(function(deck, index) {
-      var tileGrpid = deck.deckTileId;
+    sort_decks(aggregator.compareDecks);
 
-      var filter = false;
-      if (filterTag !== "All") {
-        if (deck.tags) {
-          if (deck.tags.indexOf(filterTag) == -1) {
-            filter = true;
-          }
-        } else {
-          filter = true;
+    const isDeckVisible = deck =>
+      aggregator.filterDeck(deck) &&
+      (filters.eventId === Aggregator.DEFAULT_EVENT ||
+        aggregator.deckLastPlayed[deck.id]);
+
+    decks.filter(isDeckVisible).forEach(deck => {
+      let tileGrpid = deck.deckTileId;
+      let listItem;
+      if (deck.custom) {
+        let archiveCallback = archiveDeck;
+        if (deck.archived) {
+          archiveCallback = unarchiveDeck;
         }
+        listItem = new ListItem(
+          tileGrpid,
+          deck.id,
+          openDeckCallback,
+          archiveCallback,
+          deck.archived
+        );
+      } else {
+        listItem = new ListItem(tileGrpid, deck.id, openDeckCallback);
       }
+      listItem.center.classList.add("deck_tags_container");
+      listItem.divideLeft();
+      listItem.divideRight();
 
-      if (!filter) {
-        if (cardsDb.get(tileGrpid).set == undefined) {
-          tileGrpid = 67003;
-        }
-
-        var tile = document.createElement("div");
-        tile.classList.add(deck.id + "t");
-        tile.classList.add("deck_tile");
-
-        try {
-          tile.style.backgroundImage =
-            "url(https://img.scryfall.com/cards" +
-            cardsDb.get(tileGrpid).images["art_crop"] +
-            ")";
-        } catch (e) {
-          console.error(e);
-        }
-
-        var div = document.createElement("div");
-        div.classList.add(deck.id);
-        div.classList.add("list_deck");
-
-        var fll = document.createElement("div");
-        fll.classList.add("flex_item");
-
-        var flc = document.createElement("div");
-        flc.classList.add("flex_item");
-        flc.style.flexDirection = "column";
-        flc.style.whiteSpace = "nowrap";
-
-        var flcf = document.createElement("div");
-        flcf.classList.add("deck_tags_container");
-
-        var flcfwc = document.createElement("div");
-        flcfwc.style.marginRight = "8px";
-        flcfwc.classList.add("flex_item");
-
-        let t = createTag(null, flcf, false);
+      const t = createTag(null, listItem.center, false);
+      jQuery.data(t, "deck", deck.id);
+      if (deck.format) {
+        const fText = getReadableFormat(deck.format);
+        const t = createTag(fText, listItem.center, false);
+        t.style.fontStyle = "italic";
         jQuery.data(t, "deck", deck.id);
-        if (deck.tags) {
-          deck.tags.forEach(tag => {
-            t = createTag(tag, flcf);
+      }
+      if (deck.tags) {
+        deck.tags.forEach(tag => {
+          if (tag !== deck.format) {
+            const t = createTag(tag, listItem.center);
             jQuery.data(t, "deck", deck.id);
-          });
-        }
-
-        // Deck crafting cost section
-        let ownedWildcards = {
-          common: economyHistory.wcCommon,
-          uncommon: economyHistory.wcUncommon,
-          rare: economyHistory.wcRare,
-          mythic: economyHistory.wcMythic
-        };
-
-        let missingWildcards = get_deck_missing(deck);
-
-        let wc;
-        let n = 0;
-        let boosterCost = getBoosterCountEstimate(missingWildcards);
-        orderedCardRarities.forEach(cardRarity => {
-          if (missingWildcards[cardRarity]) {
-            n++;
-            wc = document.createElement("div");
-            wc.classList.add("wc_explore_cost");
-            wc.classList.add("wc_" + cardRarity);
-            wc.title = cardRarity.capitalize() + " wldcards needed.";
-            wc.innerHTML =
-              (ownedWildcards[cardRarity] > 0
-                ? ownedWildcards[cardRarity] + "/"
-                : "") + missingWildcards[cardRarity];
-            flcfwc.appendChild(wc);
           }
         });
-        if (n !== 0) {
-          let bo = document.createElement("div");
-          bo.classList.add("bo_explore_cost");
-          bo.innerHTML = Math.round(boosterCost);
-          bo.title = "Boosters needed (estimated)";
-          flcfwc.appendChild(bo);
-        }
-
-        var flr = document.createElement("div");
-        flr.classList.add("flex_item");
-        flr.style.flexDirection = "column";
-
-        var flt = document.createElement("div");
-        flt.classList.add("flex_top");
-
-        var flb = document.createElement("div");
-        flb.classList.add("flex_bottom");
-
-        if (deck.name.indexOf("?=?Loc/Decks/Precon/") != -1) {
-          deck.name = deck.name.replace("?=?Loc/Decks/Precon/", "");
-        }
-
-        d = document.createElement("div");
-        d.classList.add("list_deck_name");
-        d.innerHTML = deck.name;
-        flt.appendChild(d);
-
-        deck.colors.forEach(function(color) {
-          var d = document.createElement("div");
-          d.classList.add("mana_s20");
-          d.classList.add("mana_" + mana[color]);
-          flb.appendChild(d);
-        });
-
-        var wr = getDeckWinrate(deck.id, deck.lastUpdated);
-
-        if (wr != 0) {
-          var d = document.createElement("div");
-          d.classList.add("list_deck_winrate");
-
-          let colClass = getWinrateClass(wr.total);
-          d.innerHTML = `${wr.wins}:${
-            wr.losses
-          } <span class="${colClass}_bright">(${Math.round(
-            wr.total * 100
-          )}%)</span>`;
-          flr.appendChild(d);
-
-          d = document.createElement("div");
-          d.classList.add("list_deck_winrate");
-          d.style.opacity = 0.6;
-
-          colClass = getWinrateClass(wr.lastEdit);
-          if (wr.lastEdit == 0) {
-            d.innerHTML = `Since last edit: -</span>`;
-          } else {
-            d.innerHTML = `Since last edit: <span class="${colClass}_bright">${Math.round(
-              wr.lastEdit * 100
-            )}%</span>`;
-          }
-          flr.appendChild(d);
-
-          wrTotalWins += wr.wins;
-          wrTotalLosses += wr.losses;
-          wrTotal += wr.wins + wr.losses;
-        }
-
-        if (deck.custom) {
-          var fldel = document.createElement("div");
-          fldel.classList.add("flex_item");
-          fldel.classList.add(deck.id + "_del");
-          fldel.classList.add("delete_item");
-        }
-
-        div.appendChild(fll);
-        fll.appendChild(tile);
-        div.appendChild(flc);
-        div.appendChild(flcf);
-        div.appendChild(flcfwc);
-        flc.appendChild(flt);
-        flc.appendChild(flb);
-        div.appendChild(flr);
-        if (deck.custom) {
-          div.appendChild(fldel);
-        }
-
-        mainDiv.appendChild(div);
-
-        $("." + deck.id).on("mouseenter", function() {
-          $("." + deck.id + "t").css("opacity", 1);
-          $("." + deck.id + "t").css("width", "200px");
-        });
-
-        $("." + deck.id).on("mouseleave", function() {
-          $("." + deck.id + "t").css("opacity", 0.66);
-          $("." + deck.id + "t").css("width", "128px");
-        });
-
-        $("." + deck.id).on("click", function() {
-          var deck = decks[index];
-          open_deck(deck, 2);
-          $(".moving_ux").animate({ left: "-100%" }, 250, "easeInOutCubic");
-        });
-
-        if (deck.custom) {
-          deleteDeck(deck);
-        }
       }
+
+      // Deck crafting cost section
+      let ownedWildcards = {
+        common: economyHistory.wcCommon,
+        uncommon: economyHistory.wcUncommon,
+        rare: economyHistory.wcRare,
+        mythic: economyHistory.wcMythic
+      };
+
+      let missingWildcards = get_deck_missing(deck);
+
+      let wc;
+      let n = 0;
+      let boosterCost = getBoosterCountEstimate(missingWildcards);
+      orderedCardRarities.forEach(cardRarity => {
+        if (missingWildcards[cardRarity]) {
+          n++;
+          wc = document.createElement("div");
+          wc.classList.add("wc_explore_cost");
+          wc.classList.add("wc_" + cardRarity);
+          wc.title = cardRarity.capitalize() + " wldcards needed.";
+          wc.innerHTML =
+            (ownedWildcards[cardRarity] > 0
+              ? ownedWildcards[cardRarity] + "/"
+              : "") + missingWildcards[cardRarity];
+          listItem.right.appendChild(wc);
+          listItem.right.style.flexDirection = "row";
+          listItem.right.style.marginRight = "16px";
+        }
+      });
+      if (n !== 0) {
+        let bo = document.createElement("div");
+        bo.classList.add("bo_explore_cost");
+        bo.innerHTML = Math.round(boosterCost);
+        bo.title = "Boosters needed (estimated)";
+        listItem.right.appendChild(bo);
+      }
+
+      if (deck.name.indexOf("?=?Loc/Decks/Precon/") != -1) {
+        deck.name = deck.name.replace("?=?Loc/Decks/Precon/", "");
+      }
+
+      let deckNameDiv = createDivision(["list_deck_name"], deck.name);
+      listItem.leftTop.appendChild(deckNameDiv);
+
+      deck.colors.forEach(function(color) {
+        let m = createDivision(["mana_s20", "mana_" + mana[color]]);
+        listItem.leftBottom.appendChild(m);
+      });
+
+      const dwr = aggregator.deckStats[deck.id];
+      if (dwr && dwr.total > 0) {
+        let deckWinrateDiv = createDivision(["list_deck_winrate"]);
+        let colClass = getWinrateClass(dwr.winrate);
+        deckWinrateDiv.innerHTML = `${dwr.wins}:${
+          dwr.losses
+        } <span class="${colClass}_bright">(${formatPercent(
+          dwr.winrate
+        )})</span>`;
+        deckWinrateDiv.title = `${dwr.wins} matches won : ${
+          dwr.losses
+        } matches lost`;
+        listItem.rightTop.appendChild(deckWinrateDiv);
+
+        let deckWinrateLastDiv = createDivision(["list_deck_winrate"]);
+        deckWinrateLastDiv.style.opacity = 0.6;
+        deckWinrateLastDiv.innerHTML = "Since last edit: ";
+        const drwr = aggregator.deckRecentStats[deck.id];
+        if (drwr && drwr.total > 0) {
+          colClass = getWinrateClass(drwr.winrate);
+          deckWinrateLastDiv.innerHTML += `<span class="${colClass}_bright">${formatPercent(
+            drwr.winrate
+          )}</span>`;
+          deckWinrateLastDiv.title = `${drwr.wins} matches won : ${
+            drwr.losses
+          } matches lost`;
+        } else {
+          deckWinrateLastDiv.innerHTML += "<span>--</span>";
+          deckWinrateLastDiv.title = "no data yet";
+        }
+        listItem.rightBottom.appendChild(deckWinrateLastDiv);
+      }
+
+      wrap_l.appendChild(listItem.container);
     });
-
-    let dtwr = $(".decks_top_winrate")[0];
-    d = document.createElement("div");
-    d.classList.add("list_deck_winrate");
-    wrTotal = (1 / wrTotal) * wrTotalWins;
-    wrTotal = wrTotal || 0;
-
-    let colClass = getWinrateClass(wrTotal);
-    d.innerHTML = `${wrTotalWins}:${wrTotalLosses} (<span class="${colClass}_bright">${Math.round(
-      wrTotal * 100
-    )}%</span>)`;
-    dtwr.appendChild(d);
-
-    $("#ux_0").append('<div class="list_fill"></div>');
-
-    $(".delete_item").hover(
-      function() {
-        // in
-        $(this).css("width", "32px");
-      },
-      function() {
-        // out
-        $(this).css("width", "4px");
-      }
-    );
   }
 }
 
-function filterDecks(filter) {
-  filterTag = filter;
-  open_decks_tab();
+function openDeckCallback(id) {
+  let deck = decks.filter(deck => deck.id == id)[0];
+  openDeck(deck, 2);
+  $(".moving_ux").animate({ left: "-100%" }, 250, "easeInOutCubic");
+}
+
+function archiveDeck(id) {
+  ipc_send("archive_deck", id);
+  getDeck(id).archived = true;
+  openDecksTab();
+}
+
+function unarchiveDeck(id) {
+  ipc_send("unarchive_deck", id);
+  getDeck(id).archived = false;
+  openDecksTab();
 }
 
 function createTag(tag, div, showClose = true) {
@@ -317,11 +285,11 @@ function createTag(tag, div, showClose = true) {
         let tag = $(this).text();
         let col = color.toRgbString();
         ipc_send("edit_tag", { tag: tag, color: col });
-        tags_colors[tag] = col;
+        setTagColor(tag, col);
 
         $(".deck_tag").each((index, obj) => {
           let tag = $(obj).text();
-          $(obj).css("background-color", tags_colors[tag]);
+          $(obj).css("background-color", getTagColor(tag));
         });
       });
 
@@ -400,7 +368,7 @@ function createTag(tag, div, showClose = true) {
 
 function addTag(deckid, tag, div) {
   decks.forEach(function(deck) {
-    if (deck.id == deckid) {
+    if (deck.id === deckid && deck.format !== tag) {
       if (deck.tags) {
         if (deck.tags.indexOf(tag) == -1) {
           deck.tags.push(tag);
@@ -433,21 +401,4 @@ function deleteTag(deckid, tag) {
   ipc_send("delete_tag", obj);
 }
 
-function getTagColor(tag) {
-  let tc = tags_colors[tag];
-  if (tc) return tc;
-
-  return "#FAE5D2";
-}
-
-function deleteDeck(_deck) {
-  $("." + _deck.id + "_del").on("click", function(e) {
-    let currentId = _deck.id;
-    e.stopPropagation();
-    ipc_send("delete_deck", currentId);
-    $("." + currentId).css("height", "0px");
-    $("." + currentId).css("overflow", "hidden");
-  });
-}
-
-module.exports = { open_decks_tab: open_decks_tab };
+module.exports = { openDecksTab: openDecksTab };

@@ -1,52 +1,62 @@
 /*
 global
   $$,
-  createDivision,
-  ipc_send,
-  change_background,
-  get_collection_export,
-  get_collection_stats,
+  addCardHover,
+  cards,
+  cardsDb,
+  cardsNew,
+  cardSize,
   collectionSortSet,
   collectionSortName,
   collectionSortCmc,
   collectionSortRarity,
-  orderedColorCodesCommon,
-  cardsNew,
-  cardsDb,
-  cards,
-  setsList,
-  cardSize,
-  get_card_image,
-  addCardHover,
-  shell,
-  get_set_scryfall,
+  change_background,
+  createDivision,
   createSelect,
-  getBoosterCountEstimate
+  get_card_image,
+  get_collection_export,
+  get_collection_stats,
+  get_set_scryfall,
+  hideLoadingBars,
+  ipc_send,
+  orderedColorCodesCommon,
+  orderedCardRarities,
+  remote,
+  setsList,
+  Menu,
+  MenuItem,
+  shell
 */
 let collectionPage = 0;
 let sortingAlgorithm = "Sort by Set";
-let filteredSets = [];
-let filteredMana = [];
-let filteredRarity = [];
+let filteredSets;
+let filteredMana;
+let filteredRarity;
 let orderedSets;
+
+const ALL_CARDS = "All cards";
+const SINGLETONS = "Singletons (at least one)";
+const FULL_SETS = "Full sets (all 4 copies)";
+
+let countMode = ALL_CARDS;
 
 //
 function openCollectionTab() {
+  filteredSets = [];
+  filteredMana = [];
+  filteredRarity = [];
   orderedSets = [];
   for (let set in setsList) {
     orderedSets.push(set);
   }
 
   orderedSets.sort((a, b) => {
-    if (setsList[a].release < setsList[b].release) {
-      return 1;
-    }
-    if (setsList[a].release > setsList[b].release) {
-      return -1;
-    }
+    if (a.release < b.release) return 1;
+    if (a.release > b.release) return -1;
     return 0;
   });
 
+  hideLoadingBars();
   document.getElementById("ux_1").innerHTML = "";
   let mainDiv = document.getElementById("ux_0");
   mainDiv.innerHTML = "";
@@ -81,7 +91,7 @@ function openCollectionTab() {
 
   input.addEventListener("keydown", function(e) {
     if (e.keyCode == 13) {
-      printCards();
+      printCollectionPage();
     }
   });
 
@@ -95,7 +105,7 @@ function openCollectionTab() {
   flrt.appendChild(advancedButton);
 
   searchButton.addEventListener("click", () => {
-    printCards();
+    printCollectionPage();
   });
 
   advancedButton.addEventListener("click", () => {
@@ -109,7 +119,7 @@ function openCollectionTab() {
     sortingAlgorithm,
     res => {
       sortingAlgorithm = res;
-      printCards();
+      printCollectionPage();
     },
     "query_select"
   );
@@ -252,6 +262,12 @@ function openCollectionTab() {
   );
   addCheckboxSearch(
     cont,
+    '<div class="icon_search_incomplete"></div>Incomplete only',
+    "query_incomplete",
+    false
+  );
+  addCheckboxSearch(
+    cont,
     '<div class="icon_search_new"></div>Newly acquired only',
     "query_new",
     false
@@ -306,7 +322,7 @@ function openCollectionTab() {
   filters.appendChild(searchButton);
 
   searchButton.addEventListener("click", () => {
-    printCards();
+    printCollectionPage();
   });
 
   mainDiv.appendChild(basicFilters);
@@ -394,6 +410,7 @@ function resetFilters() {
   document.getElementById("query_name").value = "";
   document.getElementById("query_type").value = "";
   document.getElementById("query_unown").checked = false;
+  document.getElementById("query_incomplete").checked = false;
   document.getElementById("query_new").checked = false;
   document.getElementById("query_multicolor").checked = false;
   document.getElementById("query_exclude").checked = false;
@@ -403,7 +420,7 @@ function resetFilters() {
   document.getElementById("query_cmcequal").checked = true;
   document.getElementById("query_cmchigher").checked = false;
 
-  printCards();
+  printCollectionPage();
 }
 
 //
@@ -424,7 +441,7 @@ function printStats() {
   top.appendChild(createDivision(["deck_name"], "Collection Statistics"));
   top.appendChild(createDivision(["deck_top_colors"]));
 
-  change_background("", 67574);
+  //change_background("", 67574);
 
   const flex = createDivision(["flex_item"]);
   const mainstats = createDivision(["main_stats"]);
@@ -433,19 +450,34 @@ function printStats() {
   completionLabel.innerHTML = "Sets Completion";
   mainstats.appendChild(completionLabel);
 
-  // each set stats
-  orderedSets.forEach(set => {
-    let rs = renderSetStats(stats[set], setsList[set].code, set);
-    mainstats.appendChild(rs);
-  });
+  // Counting Mode Selector
+  const countModeDiv = createDivision(["stats_count_div"]);
+  const countModeSelect = createSelect(
+    countModeDiv,
+    [ALL_CARDS, SINGLETONS, FULL_SETS],
+    countMode,
+    selectedMode => {
+      countMode = selectedMode;
+      printStats();
+    },
+    "stats_count_select"
+  );
+  countModeSelect.style.margin = "12px auto auto auto";
+  countModeSelect.style.textAlign = "left";
+  mainstats.appendChild(countModeSelect);
 
   // Complete collection sats
   let rs = renderSetStats(stats.complete, "PW", "Complete collection");
   mainstats.appendChild(rs);
 
-  // Singleton collection sats
-  rs = renderSetStats(stats.singles, "PW", "Singles");
-  mainstats.appendChild(rs);
+  // each set stats
+  orderedSets
+    .slice()
+    .reverse()
+    .forEach(set => {
+      let rs = renderSetStats(stats[set], setsList[set].code, set);
+      mainstats.appendChild(rs);
+    });
 
   const substats = createDivision(["main_stats", "sub_stats"]);
 
@@ -470,6 +502,21 @@ function renderSetStats(setStats, setIconCode, setName) {
     setName
   );
 
+  setDiv.addEventListener("mouseover", () => {
+    let span = setDiv
+      .getElementsByClassName("stats_set_icon")[0]
+      .getElementsByTagName("span")[0];
+    span.style.marginLeft = "48px";
+    setDiv.style.opacity = 1;
+  });
+  setDiv.addEventListener("mouseout", () => {
+    let span = setDiv
+      .getElementsByClassName("stats_set_icon")[0]
+      .getElementsByTagName("span")[0];
+    span.style.marginLeft = "36px";
+    setDiv.style.opacity = 0.7;
+  });
+
   setDiv.addEventListener("click", () => {
     const substats = $$(".sub_stats")[0];
     substats.innerHTML = "";
@@ -485,13 +532,13 @@ function renderSetStats(setStats, setIconCode, setName) {
       if (countStats.total > 0) {
         const capitalizedRarity =
           rarity[0].toUpperCase() + rarity.slice(1) + "s";
-        substats.appendChild(
-          renderCompletionDiv(
-            countStats,
-            "wc_" + rarity + ".png",
-            capitalizedRarity
-          )
+        let compDiv = renderCompletionDiv(
+          countStats,
+          "wc_" + rarity + ".png",
+          capitalizedRarity
         );
+        compDiv.style.opacity = 1;
+        substats.appendChild(compDiv);
       }
       wanted[rarity] = countStats.wanted;
       missing[rarity] = countStats.total - countStats.owned;
@@ -511,7 +558,10 @@ function renderSetStats(setStats, setIconCode, setName) {
         possibleRares
       ).toLocaleString([], { style: "percent", maximumSignificantDigits: 2 });
       let rareWantedDiv = createDivision(["stats_set_completion"]);
-      let rareWantedIcon = createDivision(["stats_set_icon", "bo_explore_cost"]);
+      let rareWantedIcon = createDivision([
+        "stats_set_icon",
+        "bo_explore_cost"
+      ]);
       rareWantedIcon.style.height = "30px";
       let rareWantedSpan = document.createElement("span");
       rareWantedSpan.innerHTML = `<i>~${chanceBoosterRareWanted} chance next booster has ${wantedText} rare.</i>`;
@@ -521,13 +571,17 @@ function renderSetStats(setStats, setIconCode, setName) {
       substats.appendChild(rareWantedDiv);
 
       // chance that the next booster opened contains a mythic missing from one of our decks
-      let possibleMythics = setStats["mythic"].unique - setStats["mythic"].complete;
+      let possibleMythics =
+        setStats["mythic"].unique - setStats["mythic"].complete;
       let chanceBoosterMythicWanted = (
         (chanceBoosterHasMythic * setStats["mythic"].uniqueWanted) /
         possibleMythics
       ).toLocaleString([], { style: "percent", maximumSignificantDigits: 2 });
       let mythicWantedDiv = createDivision(["stats_set_completion"]);
-      let mythicWantedIcon = createDivision(["stats_set_icon", "bo_explore_cost"]);
+      let mythicWantedIcon = createDivision([
+        "stats_set_icon",
+        "bo_explore_cost"
+      ]);
       mythicWantedIcon.style.height = "30px";
       let mythicWantedSpan = document.createElement("span");
       mythicWantedSpan.innerHTML = `<i>~${chanceBoosterMythicWanted} chance next booster has ${wantedText} mythic.</i>`;
@@ -543,6 +597,24 @@ function renderSetStats(setStats, setIconCode, setName) {
 
 //
 function renderCompletionDiv(countStats, image, title) {
+  let numerator, denominator;
+  switch (countMode) {
+    case SINGLETONS:
+      numerator = countStats.uniqueOwned;
+      denominator = countStats.unique;
+      break;
+    case FULL_SETS:
+      numerator = countStats.complete;
+      denominator = countStats.unique;
+      break;
+    default:
+    case ALL_CARDS:
+      numerator = countStats.owned;
+      denominator = countStats.total;
+      break;
+  }
+  const completionRatio = numerator / denominator;
+
   const completionDiv = createDivision(["stats_set_completion"]);
 
   let setIcon = createDivision(["stats_set_icon"]);
@@ -556,11 +628,14 @@ function renderCompletionDiv(countStats, image, title) {
   const detailsDiv = createDivision(["stats_set_details"]);
 
   const percentSpan = document.createElement("span");
-  percentSpan.innerHTML = Math.round(countStats.percentage) + "%";
+  percentSpan.innerHTML = completionRatio.toLocaleString([], {
+    style: "percent",
+    maximumSignificantDigits: 2
+  });
   detailsDiv.appendChild(percentSpan);
 
   const countSpan = document.createElement("span");
-  countSpan.innerHTML = countStats.owned + " / " + countStats.total;
+  countSpan.innerHTML = numerator + " / " + denominator;
   detailsDiv.appendChild(countSpan);
 
   const wantedSpan = document.createElement("span");
@@ -573,7 +648,7 @@ function renderCompletionDiv(countStats, image, title) {
   completionDiv.appendChild(wrapperDiv);
 
   let setBar = createDivision(["stats_set_bar"]);
-  setBar.style.width = countStats.percentage + "%";
+  setBar.style.width = Math.round(completionRatio * 100) + "%";
 
   completionDiv.appendChild(setBar);
   return completionDiv;
@@ -581,7 +656,7 @@ function renderCompletionDiv(countStats, image, title) {
 
 function sortCollection(alg) {
   sortingAlgorithm = alg;
-  printCards();
+  printCollectionPage();
 }
 
 //
@@ -603,6 +678,7 @@ function printCards() {
   let filterName = document.getElementById("query_name").value.toLowerCase();
   let filterType = document.getElementById("query_type").value.toLowerCase();
   let filterUnown = document.getElementById("query_unown").checked;
+  let filterIncomplete = document.getElementById("query_incomplete").checked;
   let filterNew = document.getElementById("query_new");
   let filterMulti = document.getElementById("query_multicolor");
   let filterExclude = document.getElementById("query_exclude");
@@ -636,9 +712,8 @@ function printCards() {
   if (sortingAlgorithm == "Sort by CMC")
     keysSorted = Object.keys(list).sort(collectionSortCmc);
 
-  for (let n = 0; n < keysSorted.length; n++) {
+  cardLoop: for (let n = 0; n < keysSorted.length; n++) {
     let key = keysSorted[n];
-    let doDraw = true;
 
     let grpId = key;
     let card = cardsDb.get(grpId);
@@ -655,50 +730,57 @@ function printCards() {
     // Filter name
     let arr;
     arr = filterName.split(" ");
-    arr.forEach(function(s) {
-      if (name.indexOf(s) == -1) {
-        doDraw = false;
+    for (let m = 0; m < arr.length; m++) {
+      if (name.indexOf(arr[m]) == -1) {
+        continue cardLoop;
       }
-    });
+    }
 
     // filter type
     arr = filterType.split(" ");
-    arr.forEach(function(s) {
-      if (type.indexOf(s) == -1) {
-        doDraw = false;
+    for (let t = 0; t < arr.length; t++) {
+      if (type.indexOf(arr[t]) == -1) {
+        continue cardLoop;
       }
-    });
+    }
+
+    if (filterIncomplete) {
+      let owned = cards[card.id];
+      if (owned >= 4) {
+        continue;
+      }
+    }
 
     if (filterNew.checked && cardsNew[key] == undefined) {
-      doDraw = false;
+      continue;
     }
 
     if (filteredSets.length > 0) {
       if (!filteredSets.includes(set)) {
-        doDraw = false;
+        continue;
       }
     }
 
-    if (filterCMC && doDraw) {
+    if (filterCMC) {
       if (filterCmcLower && filterCmcEqual) {
         if (cmc > filterCMC) {
-          doDraw = false;
+          continue;
         }
       } else if (filterCmcHigher && filterCmcEqual) {
         if (cmc < filterCMC) {
-          doDraw = false;
+          continue;
         }
       } else if (filterCmcLower && !filterCmcEqual) {
         if (cmc >= filterCMC) {
-          doDraw = false;
+          continue;
         }
       } else if (filterCmcHigher && !filterCmcEqual) {
         if (cmc <= filterCMC) {
-          doDraw = false;
+          continue;
         }
       } else if (!filterCmcHigher && !filterCmcLower && filterCmcEqual) {
         if (cmc != filterCMC) {
-          doDraw = false;
+          continue;
         }
       }
     }
@@ -710,26 +792,29 @@ function printCards() {
     }
 
     if (filterExclude.checked && cost.length == 0) {
-      doDraw = false;
+      continue;
     } else {
       let s = [];
       let generic = false;
-      cost.forEach(function(m) {
-        orderedColorCodesCommon.forEach((code, index) => {
+      for (let i = 0; i < cost.length; i++) {
+        let m = cost[i];
+        for (let j = 0; j < orderedColorCodesCommon.length; j++) {
+          let code = orderedColorCodesCommon[j];
           if (m.indexOf(code) !== -1) {
-            if (filterExclude.checked && !filteredMana.includes(index + 1)) {
-              doDraw = false;
+            if (filterExclude.checked && !filteredMana.includes(j + 1)) {
+              continue cardLoop;
             }
-            s[index + 1] = 1;
+            s[j + 1] = 1;
           }
-        });
+        }
         if (parseInt(m) > 0) {
           generic = true;
         }
-      });
+      }
+
       let ms = s.reduce((a, b) => a + b, 0);
       if (generic && ms == 0 && filterExclude.checked) {
-        doDraw = false;
+        continue;
       }
       if (filteredMana.length > 0) {
         let su = 0;
@@ -739,72 +824,70 @@ function printCards() {
           }
         });
         if (su == 0) {
-          doDraw = false;
+          continue;
         }
       }
       if (filterMulti.checked && ms < 2) {
-        doDraw = false;
+        continue;
       }
     }
 
-    if (doDraw) {
-      totalCards++;
-    }
+    totalCards++;
 
     if (
       totalCards < collectionPage * 100 ||
       totalCards > collectionPage * 100 + 99
     ) {
-      doDraw = false;
+      continue;
     }
 
     //let dfc = "";
 
-    if (doDraw) {
-      let cardDiv = createDivision(["inventory_card"]);
-      cardDiv.style.width = cardSize + "px";
+    let cardDiv = createDivision(["inventory_card"]);
+    cardDiv.style.width = cardSize + "px";
 
-      let owned = cards[card.id];
-      let aquired = cardsNew[card.id];
-      for (let i = 0; i < 4; i++) {
-        if (aquired && i >= owned - aquired && i < owned) {
-          let q = createDivision(["inventory_card_quantity_orange"]);
-          q.style.width = cardSize / 4 + "px";
-          cardDiv.appendChild(q);
-        } else if (i < owned) {
-          let q = createDivision(["inventory_card_quantity_green"]);
-          q.style.width = cardSize / 4 + "px";
-          cardDiv.appendChild(q);
-        } else {
-          let q = createDivision(["inventory_card_quantity_gray"]);
-          q.style.width = cardSize / 4 + "px";
-          cardDiv.appendChild(q);
-        }
+    let owned = cards[card.id];
+    let aquired = cardsNew[card.id];
+    for (let i = 0; i < 4; i++) {
+      if (aquired && i >= owned - aquired && i < owned) {
+        let q = createDivision(["inventory_card_quantity_orange"]);
+        q.style.width = cardSize / 4 + "px";
+        cardDiv.appendChild(q);
+      } else if (i < owned) {
+        let q = createDivision(["inventory_card_quantity_green"]);
+        q.style.width = cardSize / 4 + "px";
+        cardDiv.appendChild(q);
+      } else {
+        let q = createDivision(["inventory_card_quantity_gray"]);
+        q.style.width = cardSize / 4 + "px";
+        cardDiv.appendChild(q);
       }
-
-      let img = document.createElement("img");
-      img.style.width = cardSize + "px";
-      img.classList.add("inventory_card_img");
-      img.src = get_card_image(card);
-
-      cardDiv.appendChild(img);
-
-      addCardHover(img, card);
-
-      img.addEventListener("click", () => {
-        if (cardsDb.get(grpId).dfc == "SplitHalf") {
-          card = cardsDb.get(card.dfcId);
-        }
-        //let newname = card.name.split(' ').join('-');
-        shell.openExternal(
-          `https://scryfall.com/card/${get_set_scryfall(card.set)}/${
-            card.cid
-          }/${card.name}`
-        );
-      });
-
-      div.appendChild(cardDiv);
     }
+
+    let img = document.createElement("img");
+    img.style.width = cardSize + "px";
+    img.classList.add("inventory_card_img");
+    img.src = get_card_image(card);
+
+    cardDiv.appendChild(img);
+
+    addCardHover(img, card);
+
+    img.addEventListener("click", () => {
+      if (cardsDb.get(grpId).dfc == "SplitHalf") {
+        card = cardsDb.get(card.dfcId);
+      }
+      //let newname = card.name.split(' ').join('-');
+      shell.openExternal(
+        `https://scryfall.com/card/${get_set_scryfall(card.set)}/${card.cid}/${
+          card.name
+        }`
+      );
+    });
+
+    addCardMenu(img, card);
+
+    div.appendChild(cardDiv);
   }
 
   let paging_bottom = createDivision(["paging_container"]);
@@ -817,11 +900,11 @@ function printCards() {
     but = createDivision(["paging_button"], " < ");
 
     but.addEventListener("click", () => {
-      setCollectionPage(collectionPage - 1);
+      printCollectionPage(collectionPage - 1);
     });
     butClone = but.cloneNode(true);
     butClone.addEventListener("click", () => {
-      setCollectionPage(collectionPage + 1);
+      printCollectionPage(collectionPage + 1);
     });
   }
 
@@ -830,18 +913,18 @@ function printCards() {
 
   let totalPages = Math.ceil(totalCards / 100);
   for (let n = 0; n < totalPages; n++) {
-    but = createDivision(["paging_button"], n);
+    but = createDivision(["paging_button"], n + 1);
     if (collectionPage == n) {
       but.classList.add("paging_active");
     }
 
     let page = n;
     but.addEventListener("click", () => {
-      setCollectionPage(page);
+      printCollectionPage(page);
     });
     butClone = but.cloneNode(true);
     butClone.addEventListener("click", () => {
-      setCollectionPage(page);
+      printCollectionPage(page);
     });
 
     paging.append(but);
@@ -853,11 +936,11 @@ function printCards() {
   } else {
     but = createDivision(["paging_button"], " > ");
     but.addEventListener("click", () => {
-      setCollectionPage(collectionPage + 1);
+      printCollectionPage(collectionPage + 1);
     });
     butClone = but.cloneNode(true);
     butClone.addEventListener("click", () => {
-      setCollectionPage(collectionPage + 1);
+      printCollectionPage(collectionPage + 1);
     });
   }
   paging.appendChild(but);
@@ -868,9 +951,31 @@ function printCards() {
   }, 1000);
 }
 
+function addCardMenu(div, card) {
+  let arenaCode = `1 ${card.name} (${setsList[card.set].arenacode}) ${
+    card.cid
+  }`;
+  div.addEventListener(
+    "contextmenu",
+    e => {
+      e.preventDefault();
+      let menu = new Menu();
+      let menuItem = new MenuItem({
+        label: "Copy Arena code",
+        click: () => {
+          remote.clipboard.writeText(arenaCode);
+        }
+      });
+      menu.append(menuItem);
+      menu.popup(remote.getCurrentWindow());
+    },
+    false
+  );
+}
+
 //
 /* eslint-disable */
-function setCollectionPage(page) {
+function printCollectionPage(page = 0) {
   collectionPage = page;
   printCards();
 }

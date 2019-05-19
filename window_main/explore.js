@@ -15,6 +15,7 @@ globals
   economyHistory,
   getWinrateClass,
   get_rank_index_16,
+  hideLoadingBars,
   createDivision,
   removeDuplicates,
   compare_cards,
@@ -34,17 +35,16 @@ let filterSortDir = "";
 let onlyOwned = false;
 let filteredMana = [];
 let filteredranks = [];
-//let ownedWildcards = { c: 0, u: 0, r: 0, m: 0 };
+let ownedWildcards = { c: 0, u: 0, r: 0, m: 0 };
 
 let ranks_list = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic"];
 
-const open_deck = require("./deck_details").open_deck;
+const openDeck = require("./deck-details").openDeck;
 
 let raritySort = { c: "common", u: "uncommon", r: "rare", m: "mythic" };
 
 function openExploreTab() {
-  document.body.style.cursor = "auto";
-
+  hideLoadingBars();
   var mainDiv = document.getElementById("ux_0");
   var dateNow, d;
   ownedWildcards = {
@@ -99,12 +99,19 @@ function openExploreTab() {
   d.classList.add("list_fill");
   mainDiv.appendChild(d);
 
-  $(this).off();
-  mainDiv.addEventListener("scroll", () => {
-    if (Math.round(mainDiv.scrollTop + mainDiv.offsetHeight) >= mainDiv.scrollHeight) {
+  $(mainDiv).off();
+  $(mainDiv).on("scroll", () => {
+    if (
+      Math.round(mainDiv.scrollTop + mainDiv.offsetHeight) >=
+      mainDiv.scrollHeight
+    ) {
       queryExplore(filterSkip);
     }
   });
+}
+
+function getEventPrettyName(event) {
+  return eventsList[event] ? eventsList[event] : event;
 }
 
 function drawFilters() {
@@ -171,7 +178,7 @@ function drawFilters() {
   if (filterType == "Events") {
     eventFilters = Object.keys(eventsList)
       .concat(activeEvents)
-      .map(ev => eventsList[ev])
+      .map(ev => getEventPrettyName(ev))
       .filter(
         item =>
           item != undefined &&
@@ -181,12 +188,12 @@ function drawFilters() {
           item != "Play" &&
           item != "Traditional Play" &&
           item != "Traditional Ranked" &&
-          !rankedEvents.map(ev => eventsList[ev]).includes(item)
+          !rankedEvents.map(ev => getEventPrettyName(ev)).includes(item)
       );
 
     eventFilters = [...new Set(eventFilters)];
   } else if (filterType == "Ranked Draft") {
-    eventFilters = rankedEvents.map(ev => eventsList[ev]);
+    eventFilters = rankedEvents.map(ev => getEventPrettyName(ev));
   } else if (filterType == "Ranked Constructed") {
     eventFilters.push("Ladder");
     eventFilters.push("Traditional Ladder");
@@ -198,7 +205,7 @@ function drawFilters() {
     return 0;
   });
 
-  let mappedActive = activeEvents.map(ev => eventsList[ev]);
+  let mappedActive = activeEvents.map(ev => getEventPrettyName(ev));
   eventFilters.forEach(item => {
     if (mappedActive.includes(item)) {
       eventFilters.splice(eventFilters.indexOf(item), 1);
@@ -399,6 +406,7 @@ function queryExplore(skip) {
   let filterEventId = Object.keys(eventsList).filter(
     key => eventsList[key] == filterEvent
   )[0];
+  filterEventId = !filterEventId ? filterEvent : filterEventId;
 
   if (filterEvent == "All") filterEventId = "";
   if (filterEvent == "Ladder") filterEventId = "Ladder";
@@ -431,11 +439,11 @@ function setExploreDecks(data) {
   filterSkip += data.results_number;
   if (data.results_type == "Ranked Constructed") {
     data.result.forEach((deck, index) => {
-      deckLoad(deck, index);
+      deckLoad(deck, filterSkip + index);
     });
   } else {
     data.result.forEach((course, index) => {
-      eventLoad(course, index);
+      eventLoad(course, filterSkip + index);
     });
   }
 }
@@ -574,7 +582,7 @@ function deckLoad(_deck, index) {
   $("." + index).on("click", function() {
     _deck.mainDeck = removeDuplicates(_deck.mainDeck).sort(compare_cards);
     _deck.sideboard = removeDuplicates(_deck.sideboard).sort(compare_cards);
-    open_deck(_deck, 1);
+    openDeck(_deck, 1);
     $(".moving_ux").animate({ left: "-100%" }, 250, "easeInOutCubic");
   });
 }

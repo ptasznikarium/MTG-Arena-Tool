@@ -1,75 +1,103 @@
 {
-	"name": "MTG-Arena-Tool",
-	"description": "An MTG Arena deck tracker and statistics manager.",
-	"author": "Manuel Etchegaray <manuel.etchegaray7@gmail.com>",
-	"contributors": [
-		"Ken Browning <cashmonae@gmail.com>",
-		"Douglas Miller <millerdouglas@bellsouth.net>",
-		"Annan Fay Yearian <annanfay@gmail.com>",
-		"Faraz Sherwani <farazsherwani@gmail.com>",
-		"Kyle Olson <kyle@kyleolson.com>",
-		"Sasha Trachuk <alexandr.trachuk@gmail.com>",
-		"Brad Wyman <tildar@gmail.com>",
-		"Henre Botha <henrebotha@gmail.com>",
-		"Alexander Savchenkov <alex@sociumtrade.com>",
-		"Jeff Hodges <jeff@somethingsimilar.com>",
-		"NorthFury <robyter@gmail.com>"
-	],
-	"license": "SEE LICENSE IN LICENSE.md",
-	"homepage": "https://mtgatool.com/",
-	"repository": "https://github.com/Manuel-777/MTG-Arena-Tool",
-	"bugs": "https://github.com/Manuel-777/MTG-Arena-Tool/issues",
-	"version": "2.2.24",
-	"main": "main.js",
-	"build": {
-		"appId": "com.github.manuel777.mtgatool",
-		"win": {
-			"target": "NSIS",
-			"icon": "icon.ico"
-		},
-		"mac": {
-			"target": "pkg",
-			"icon": "icon.ico"
-		},
-		"linux": {
-			"target": "AppImage",
-			"category": "utility",
-			"icon": "32x32.png"
-		}
-	},
-	"scripts": {
-		"start": "electron .",
-		"postinstall": "install-app-deps",
-		"dist": "build --x64"
-	},
-	"dependencies": {
-		"async": "^2.6.1",
-		"chart.js": "^2.8.0",
-		"conf": "^2.2.0",
-		"date-fns": "^1.30.1",
-		"electron-asar-hot-updater": "0.0.5",
-		"electron-debug": "^1.5.0",
-		"electron-updater": "^4.0.6",
-		"electron-transparency-mouse-fix": "^1.0.0-beta",
-		"google-protobuf": "^3.7.1",
-		"gunzip-file": "^0.1.1",
-		"howler": "^2.1.1",
-		"js-sha1": "^0.6.0",
-		"lodash.clonedeep": "^4.5.0",
-		"lodash.transform": "^4.6.0",
-		"mathjs": "^5.9.0",
-		"npm": "^6.9.0",
-		"qs": "^6.7.0",
-		"queue": "^4.5.1",
-		"time-elements": "^2.0.0"
-	},
-	"devDependencies": {
-		"acorn": "^6.1.1",
-		"electron": "^3.1.8",
-		"electron-builder": "^20.39.0",
-		"eslint": "^5.16.0",
-		"eslint-config-prettier": "^4.1.0",
-		"eslint-plugin-prettier": "^3.0.1",
-		"prettier": "1.16.4"
-	}
+  "name": "MTG-Arena-Tool",
+  "description": "An MTG Arena deck tracker and statistics manager.",
+  "author": "Manuel Etchegaray <manuel.etchegaray7@gmail.com>",
+  "contributors": [
+    "Ken Browning <cashmonae@gmail.com>",
+    "Douglas Miller <millerdouglas@bellsouth.net>",
+    "Annan Fay Yearian <annanfay@gmail.com>",
+    "Faraz Sherwani <farazsherwani@gmail.com>",
+    "Kyle Olson <kyle@kyleolson.com>",
+    "Sasha Trachuk <alexandr.trachuk@gmail.com>",
+    "Brad Wyman <tildar@gmail.com>",
+    "Henre Botha <henrebotha@gmail.com>",
+    "Alexander Savchenkov <alex@sociumtrade.com>",
+    "Jeff Hodges <jeff@somethingsimilar.com>",
+    "NorthFury <robyter@gmail.com>",
+    "Benjamin Lu <lu.s.benjamin@gmail.com>"
+  ],
+  "keywords": [
+    "mtg",
+    "mtg-arena",
+    "deck-tracker",
+    "magic-the-gathering"
+  ],
+  "license": "SEE LICENSE IN LICENSE.md",
+  "homepage": "https://mtgatool.com/",
+  "repository": "https://github.com/Manuel-777/MTG-Arena-Tool",
+  "bugs": "https://github.com/Manuel-777/MTG-Arena-Tool/issues",
+  "version": "2.5.5",
+  "main": "main.js",
+  "build": {
+    "appId": "com.github.manuel777.mtgatool",
+    "files": [
+      "!**/__tests__/**"
+    ],
+    "win": {
+      "target": "NSIS",
+      "icon": "icon.ico",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "mac": {
+      "target": "pkg",
+      "icon": "icon-512.ico",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility;",
+      "icon": "icon-256.png",
+      "artifactName": "${productName}-${version}.${ext}"
+    }
+  },
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "install-app-deps",
+    "format": "prettier --write \"**/*.js\"",
+    "test": "npm run --silent test:eslint && npm run --silent test:prettier && npm run --silent test:jest",
+    "test:eslint": "eslint . --quiet",
+    "test:prettier": "prettier --list-different \"**/*.js\"",
+    "test:jest": "jest",
+    "dist": "build --x64",
+    "version": "node -p \"require('./package.json').version\""
+  },
+  "dependencies": {
+    "async": "^2.6.1",
+    "chart.js": "^2.8.0",
+    "conf": "^2.2.0",
+    "conic-gradient": "^1.0.0",
+    "date-fns": "^1.30.1",
+    "electron-asar-hot-updater": "0.0.5",
+    "electron-debug": "^1.5.0",
+    "electron-store": "^3.2.0",
+    "electron-transparency-mouse-fix": "^1.0.0-beta",
+    "electron-unhandled": "^2.2.0",
+    "electron-updater": "^4.0.6",
+    "electron-util": "^0.11.0",
+    "google-protobuf": "^3.7.1",
+    "gunzip-file": "^0.1.1",
+    "howler": "^2.1.2",
+    "jquery": "^3.4.1",
+    "jquery.easing": "^1.4.1",
+    "js-sha1": "^0.6.0",
+    "lodash.clonedeep": "^4.5.0",
+    "lodash.transform": "^4.6.0",
+    "mathjs": "^5.9.0",
+    "npm": "^6.9.0",
+    "qs": "^6.7.0",
+    "queue": "^4.5.1",
+    "spectrum-colorpicker": "^1.8.0",
+    "striptags": "^3.1.1",
+    "time-elements": "^2.0.0"
+  },
+  "devDependencies": {
+    "acorn": "^6.1.1",
+    "electron": "^3.1.9",
+    "electron-builder": "^20.40.2",
+    "eslint": "^5.16.0",
+    "eslint-config-prettier": "^4.2.0",
+    "eslint-plugin-prettier": "^3.0.1",
+    "jest": "^24.8.0",
+    "prettier": "1.16.4"
+  }
 }

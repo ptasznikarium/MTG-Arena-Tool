@@ -15,6 +15,7 @@ class CardsList {
     if (!list) list = [];
     this._list = list.map(obj => {
       return {
+        ...obj,
         quantity: obj.quantity || 1,
         id: obj.id || obj,
         measurable: true
@@ -28,7 +29,7 @@ class CardsList {
 
   /**
    * Adds a card to the list
-  **/
+   **/
   add(grpId, quantity = 1, merge = false) {
     if (typeof quantity !== "number") {
       throw new Error("quantity must be a number");
@@ -47,12 +48,12 @@ class CardsList {
       id: grpId,
       measurable: true
     });
-    return this._list[this._list.length-1];
+    return this._list[this._list.length - 1];
   }
 
   /**
    * Removes a card from the list.
-  **/
+   **/
   remove(grpId, quantity = 1, byName = false) {
     if (typeof quantity !== "number") {
       throw new Error("quantity must be a number");
@@ -68,8 +69,7 @@ class CardsList {
           quantity -= remove;
         }
       });
-    }
-    else {
+    } else {
       let removed = 0;
       this._list.forEach(function(card) {
         if (grpId == card.id) {
@@ -246,11 +246,13 @@ class CardsList {
     let colors = new Colors();
     this._list.forEach(card => {
       let cardData = cardsDb.get(card.id);
-      let isLand = cardData.type.indexOf("Land") !== -1;
-      if (isLand && cardData.frame.length < 3) {
-        colors.addFromArray(cardData.frame);
+      if (cardData) {
+        let isLand = cardData.type.indexOf("Land") !== -1;
+        if (isLand && cardData.frame.length < 3) {
+          colors.addFromArray(cardData.frame);
+        }
+        colors.addFromCost(cardData.cost);
       }
-      colors.addFromCost(cardData.cost);
     });
 
     return colors;

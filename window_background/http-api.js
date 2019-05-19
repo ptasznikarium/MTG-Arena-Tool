@@ -1,5 +1,7 @@
 /*
 global
+  eventsList,
+  eventsToFormat,
   tokenAuth,
   decks,
   rstore,
@@ -11,7 +13,10 @@ global
   store,
   makeId,
   debugLog,
-  syncUserData
+  ranked_events,
+  setsList,
+  syncUserData,
+  sha1
 */
 const async = require("async");
 const qs = require("qs");
@@ -542,17 +547,6 @@ function httpSetEconomy(change) {
   });
 }
 
-function httpSendError(error) {
-  var _id = makeId(6);
-  error = JSON.stringify(error);
-  httpAsync.push({
-    reqId: _id,
-    method: "send_error",
-    method_path: "/api/send_error.php",
-    error: error
-  });
-}
-
 function httpDeleteData() {
   var _id = makeId(6);
   httpAsync.push({
@@ -604,7 +598,7 @@ function httpTournamentGet(tid) {
   });
 }
 
-function httpTournamentJoin(tid, _deck) {
+function httpTournamentJoin(tid, _deck, pass) {
   let _id = makeId(6);
   let deck = JSON.stringify(decks[_deck]);
   httpAsync.unshift({
@@ -612,7 +606,8 @@ function httpTournamentJoin(tid, _deck) {
     method: "tou_join",
     method_path: "/api/tournament_join.php",
     id: tid,
-    deck: deck
+    deck: deck,
+    pass: pass
   });
 }
 
@@ -690,7 +685,6 @@ module.exports = {
   httpSetMatch,
   httpSetDraft,
   httpSetEconomy,
-  httpSendError,
   httpDeleteData,
   httpGetDatabase,
   htttpGetStatus,

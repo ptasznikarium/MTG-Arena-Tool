@@ -2,10 +2,6 @@
 /*
 globals
   cardsDb,
-  makeId,
-  get_card_type_sort,
-  addCardSeparator,
-  addCardTile,
   compare_cards,
   getWildcardsMissing,
   setsList,
@@ -31,8 +27,8 @@ class Deck {
     this.tags = mtgaDeck.tags || [mtgaDeck.format];
     this.custom = mtgaDeck.custom || false;
 
-   //this.sortMainboard(compare_cards);
-   //this.sortSideboard(compare_cards);
+    //this.sortMainboard(compare_cards);
+    //this.sortSideboard(compare_cards);
 
     return this;
   }
@@ -52,7 +48,6 @@ class Deck {
   sortSideboard(func) {
     this.sideboard.get().sort(func);
   }
-
 
   /**
    * returns a clone of this deck, not referenced to this instance.
@@ -137,49 +132,6 @@ class Deck {
   }
 
   /**
-   * Draws this deck on the specified DOM object
-   **/
-  draw(div) {
-    var unique = makeId(4);
-    div.html("");
-    var prevIndex = 0;
-
-    let mainBoard = this.mainboard;
-    mainBoard.get().forEach(function(card) {
-      let grpId = card.id;
-      let type = cardsDb.get(grpId).type;
-      let cardTypeSort = get_card_type_sort(type);
-      if (prevIndex == 0) {
-        let q = mainBoard.countType(type);
-        addCardSeparator(cardTypeSort, div, q);
-      } else if (prevIndex != 0) {
-        if (cardTypeSort != get_card_type_sort(cardsDb.get(prevIndex).type)) {
-          let q = mainBoard.countType(type);
-          addCardSeparator(cardTypeSort, div, q);
-        }
-      }
-
-      if (card.quantity > 0) {
-        addCardTile(grpId, unique + "a", card.quantity, div);
-      }
-
-      prevIndex = grpId;
-    });
-
-    let sideBoard = this.sideboard;
-    if (sideBoard._list.length > 0) {
-      addCardSeparator(99, div, sideBoard.count());
-      prevIndex = 0;
-      sideBoard.get().forEach(card => {
-        var grpId = card.id;
-        if (card.quantity > 0) {
-          addCardTile(grpId, unique + "b", card.quantity, div);
-        }
-      });
-    }
-  }
-
-  /**
    * Returns a txt format string of this deck.
    **/
   getExportTxt() {
@@ -258,7 +210,7 @@ class Deck {
     ret.id = this.id;
     ret.lastUpdated = this.lastUpdated;
     ret.deckTileId = this.tile;
-    ret.colors = this.colors;
+    ret.colors = this.colors.get();
     ret.tags = this.tags;
     ret.custom = this.custom;
 

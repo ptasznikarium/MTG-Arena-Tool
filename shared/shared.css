@@ -1,3 +1,5 @@
+@import "../node_modules/spectrum-colorpicker/spectrum.css";
+
 :root {
   --main-font-name:  'lato', sans-serif;
   --main-font-name-it:  'lato-italic', sans-serif;
@@ -811,4 +813,58 @@ span {
     /*when navigating through the items using the arrow keys:*/
     background-color: DodgerBlue !important; 
     color: #ffffff; 
+}
+
+.actionlog {
+    text-shadow: 2px 2px 2px rgb(0, 0, 0);
+    white-space: nowrap;
+    overflow: hidden;
+    height: 24px;
+    line-height: 24px;
+    width: 100%;
+    display: flex;
+    font-size: 14px;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+}
+
+.log_p1 {
+    color: rgba(255, 200, 200, 1);
+}
+
+.log_p2 {
+    color: rgba(200, 200, 255, 1);
+}
+
+.log_p-1 {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: bold;
+}
+
+.actionlog_time {
+    margin-left: 8px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.actionlog_text {
+    margin-left: 8px;
+}
+
+.action_log_container {
+    margin: 16px auto 48px auto;
+    max-width: 600px;
+}
+
+.action_log_container .actionlog {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+log-card {
+    text-decoration: none;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: underline;
+}
+log-ability {
+    text-decoration: underline !important;
+    cursor: pointer;
 }

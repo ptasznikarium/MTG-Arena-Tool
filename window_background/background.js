@@ -4,6 +4,7 @@ global
   compare_archetypes,
   Deck,
   eventsToFormat,
+  getDeck,
   stripTags,
   windowBackground,
   windowRenderer,
@@ -32,6 +33,7 @@ global
   onLabelInEventGetActiveEvents,
   onLabelEventMatchCreated,
   onLabelOutDirectGameChallenge,
+  onLabelOutEventAIPractice,
   onLabelInDraftDraftStatus,
   onLabelInDraftMakePick,
   onLabelOutDraftMakePick,
@@ -39,13 +41,29 @@ global
   onLabelMatchGameRoomStateChangedEvent,
   onLabelInEventGetSeasonAndRankDetail,
   onLabelGetPlayerInventoryGetRewardSchedule,
+  onLabelRankUpdated,
   HIDDEN_PW
 */
 var electron = require("electron");
+const { remote, app, net, clipboard } = require("electron");
 
-const { app, net, clipboard } = require("electron");
+if (!remote.app.isPackaged) {
+  const { openNewGitHubIssue, debugInfo } = require("electron-util");
+  const unhandled = require("electron-unhandled");
+  unhandled({
+    showDialog: true,
+    reportButton: error => {
+      openNewGitHubIssue({
+        user: "Manuel-777",
+        repo: "MTG-Arena-Tool",
+        body: `\`\`\`\n${error.stack}\n\`\`\`\n\n---\n\n${debugInfo()}`
+      });
+    }
+  });
+}
+
 const path = require("path");
-const Store = require("../store.js");
+const Store = require("electron-store");
 const fs = require("fs");
 const sha1 = require("js-sha1");
 const ipc = electron.ipcRenderer;
@@ -69,7 +87,8 @@ const rememberCfg = {
   settings: {
     auto_login: false,
     launch_to_tray: false,
-    remember_me: true
+    remember_me: true,
+    beta_channel: false
   }
 };
 
@@ -104,7 +123,8 @@ const defaultCfg = {
     overlay_ontop: true,
     export_format: "$Name,$Count,$Rarity,$SetName,$Collector",
     back_color: "rgba(0,0,0,0.3)",
-    back_url: ""
+    back_url: "",
+    right_panel_width: 200
   },
   economy_index: [],
   economy: [],
@@ -124,17 +144,17 @@ const defaultCfg = {
 };
 
 var rstore = new Store({
-  configName: "remember",
+  name: "remember",
   defaults: rememberCfg
 });
 
 var store = new Store({
-  configName: "default",
+  name: "default",
   defaults: defaultCfg
 });
 
 var settingsStore = new Store({
-  configName: "settings",
+  name: "settings",
   defaults: settingsCfg
 });
 
@@ -171,11 +191,12 @@ var currentMatchDefault = {
   GREtoClient: {},
   processedAnnotations: [],
   timers: {},
-  zones: {},
+  zones: [],
   players: {},
   annotations: [],
   gameObjs: {},
   gameInfo: {},
+  gameStage: "",
   turnInfo: {},
   playerCardsUsed: [],
   oppCardsUsed: [],
@@ -228,7 +249,6 @@ var matchBeginTime = 0;
 var matchGameStats = [];
 var matchCompletedOnGameNumber = 0;
 var gameNumberCompleted = 0;
-let gameStage = "";
 let initialLibraryInstanceIds = [];
 let idChanges = {};
 let instanceToCardIdMap = {};
@@ -257,17 +277,6 @@ var wcMythic = 0;
 
 var lastDeckUpdate = new Date();
 
-let formats = {
-  Standard: "Standard",
-  TraditionalStandard: "Traditional Standard",
-  Pauper: "Pauper",
-  Singleton: "Singleton",
-  NoInstants: "No Instants",
-  Ravnica: "Ravnica Constructed",
-  XLN: "Ixalan Constructed",
-  Pandemonium: "Pandemonium"
-};
-
 // Begin of IPC messages recievers
 function ipc_send(method, arg, to = windowRenderer) {
   if (method == "ipc_log") {
@@ -287,7 +296,7 @@ ipc.on("save_app_settings", function(event, arg) {
     rstore.set("email", "");
     rstore.set("token", "");
   }
-  
+
   loadSettings(updated);
   rstore.set("settings", updated);
   ipc_send("hide_loading");
@@ -383,8 +392,10 @@ ipc.on("overlayBounds", function(event, obj) {
 //
 ipc.on("save_user_settings", function(event, settings) {
   ipc_send("show_loading");
-  loadSettings(settings);
-  store.set("settings", settings);
+  const oldSettings = store.get("settings");
+  const updated = { ...oldSettings, ...settings };
+  loadSettings(updated);
+  store.set("settings", updated);
   ipc_send("hide_loading");
 });
 
@@ -394,50 +405,66 @@ ipc.on("delete_data", function() {
 });
 
 //
-ipc.on("delete_course", function(event, arg) {
+ipc.on("archive_deck", function(event, arg) {
   ipc_send("show_loading");
-  var i = events.courses.indexOf(arg);
-  if (i > -1) {
-    events.courses.splice(i, 1);
-    store.set("courses_index", events.courses);
-    store.delete(arg);
-  }
+  decks[arg].archived = true;
+  store.set("decks." + arg, decks[arg]);
   ipc_send("hide_loading");
-  //console.log("Delete ", arg);
 });
 
 //
-ipc.on("delete_deck", function(event, arg) {
+ipc.on("unarchive_deck", function(event, arg) {
   ipc_send("show_loading");
-  var i = decks.index.indexOf(arg);
-  if (i > -1) {
-    decks.index.splice(i, 1);
-    delete decks[arg];
-    store.set("decks_index", decks.index);
-    store.delete("decks." + arg);
-  }
-  // If we do it imediately it looks awful
-  setTimeout(() => {
-    ipc_send("set_decks", JSON.stringify(decks));
-    ipc_send("hide_loading");
-  }, 200);
+  decks[arg].archived = false;
+  store.set("decks." + arg, decks[arg]);
+  ipc_send("hide_loading");
 });
 
 //
-ipc.on("delete_match", function(event, arg) {
+ipc.on("archive_course", function(event, arg) {
   ipc_send("show_loading");
-  var i = history.matches.indexOf(arg);
-  if (i > -1) {
-    history.matches.splice(i, 1);
-    store.set("matches_index", history.matches);
-    store.delete(arg);
-  }
-  i = drafts.matches.indexOf(arg);
-  if (i > -1) {
-    drafts.matches.splice(i, 1);
-    store.set("draft_index", drafts.matches);
-    store.delete(arg);
-  }
+  events[arg].archived = true;
+  store.set(arg, events[arg]);
+  ipc_send("hide_loading");
+});
+
+//
+ipc.on("unarchive_course", function(event, arg) {
+  ipc_send("show_loading");
+  events[arg].archived = false;
+  store.set(arg, events[arg]);
+  ipc_send("hide_loading");
+});
+
+//
+ipc.on("archive_match", function(event, arg) {
+  ipc_send("show_loading");
+  history[arg].archived = true;
+  store.set(arg, history[arg]);
+  ipc_send("hide_loading");
+});
+
+//
+ipc.on("unarchive_match", function(event, arg) {
+  ipc_send("show_loading");
+  history[arg].archived = false;
+  store.set(arg, history[arg]);
+  ipc_send("hide_loading");
+});
+
+//
+ipc.on("archive_economy", function(event, _id) {
+  ipc_send("show_loading");
+  economy[_id].archived = true;
+  store.set(_id, economy[_id]);
+  ipc_send("hide_loading");
+});
+
+//
+ipc.on("unarchive_economy", function(event, _id) {
+  ipc_send("show_loading");
+  economy[_id].archived = false;
+  store.set(_id, economy[_id]);
   ipc_send("hide_loading");
 });
 
@@ -454,38 +481,6 @@ ipc.on("request_history", (event, state) => {
 //
 ipc.on("set_deck_archetypes", (event, arg) => {
   deck_archetypes = arg;
-});
-
-window.onerror = (msg, url, line, col, err) => {
-  var error = {
-    msg: err.msg,
-    stack: err.stack,
-    line: line,
-    col: col
-  };
-  error.id = sha1(error.msg + playerData.arenaId);
-  httpApi.httpSendError(error);
-  ipc_send("ipc_log", "Background Error:" + error);
-};
-
-process.on("uncaughtException", function(err) {
-  var error = {
-    msg: err,
-    stack: "uncaughtException",
-    line: 0,
-    col: 0
-  };
-  console.log("ERROR: ", error);
-  error.id = sha1(error.msg + playerData.arenaId);
-  httpApi.httpSendError(error);
-  ipc_send("ipc_log", `Background ${error.stack}: ${error.join(" - ")}`);
-});
-
-//
-ipc.on("error", function(event, err) {
-  err.id = sha1(err.msg + playerData.arenaId);
-  httpApi.httpSendError(err);
-  ipc_send("ipc_log", "Background error:" + err);
 });
 
 //
@@ -609,7 +604,7 @@ ipc.on("tou_get", function(event, arg) {
 });
 
 ipc.on("tou_join", function(event, arg) {
-  httpApi.httpTournamentJoin(arg.id, arg.deck);
+  httpApi.httpTournamentJoin(arg.id, arg.deck, sha1(arg.pass));
 });
 
 ipc.on("tou_drop", function(event, arg) {
@@ -696,7 +691,7 @@ function sendEconomy() {
 function loadPlayerConfig(playerId, serverData = undefined) {
   ipc_send("ipc_log", "Load player ID: " + playerId);
   store = new Store({
-    configName: playerId,
+    name: playerId,
     defaults: defaultCfg
   });
 
@@ -972,6 +967,11 @@ let settingsLogUri = settingsStore.get("logUri");
 if (settingsLogUri) {
   logUri = settingsLogUri;
 }
+
+if (typeof process.env.LOGFILE !== "undefined") {
+  logUri = process.env.LOGFILE;
+}
+
 console.log(logUri);
 const ArenaLogWatcher = require("./arena-log-watcher");
 
@@ -1139,6 +1139,13 @@ function onLogEntryFound(entry) {
           case "Event.MatchCreated":
             json = entry.json();
             onLabelEventMatchCreated(entry, json);
+            break;
+
+          case "Event.AIPractice":
+            if (entry.arrow == "==>") {
+              json = entry.json();
+              onLabelOutEventAIPractice(entry, json);
+            }
             break;
 
           case "DirectGame.Challenge":
@@ -1379,14 +1386,11 @@ function setDraftCards(json) {
 
 function actionLogGenerateLink(grpId) {
   var card = cardsDb.get(grpId);
-  return (
-    '<a class="card_link click-on" href="' + grpId + '">' + card.name + "</a>"
-  );
+  return '<log-card id="' + grpId + '">' + card.name + "</log-card>";
 }
 
 function actionLogGenerateAbilityLink(abId) {
-  var ab = cardsDb.getAbility(abId);
-  return `<a class="card_ability click-on" title="${ab}">ability</a>`;
+  return `<log-ability id="${abId}">ability</log-ability>`;
 }
 
 var currentActionLog = "";
@@ -1395,13 +1399,18 @@ var currentActionLog = "";
 function actionLog(seat, time, str, grpId = 0) {
   if (!time) time = new Date();
   if (seat == -99) {
-    currentActionLog = "";
+    currentActionLog = "version: 0\r\n";
   } else {
     var hh = ("0" + time.getHours()).slice(-2);
     var mm = ("0" + time.getMinutes()).slice(-2);
     var ss = ("0" + time.getSeconds()).slice(-2);
-    currentActionLog +=
-      hh + ":" + mm + ":" + ss + " " + stripTags(str) + "\r\n";
+    /*
+    str = str.replace(/(<([^>]+)>)/gi, "");
+    */
+
+    currentActionLog += `${seat}\r\n`;
+    currentActionLog += `${hh}:${mm}:${ss}\r\n`;
+    currentActionLog += `${str}\r\n`;
 
     try {
       fs.writeFileSync(
@@ -1414,7 +1423,7 @@ function actionLog(seat, time, str, grpId = 0) {
     }
   }
 
-  //console.log("action_log", str, {seat: seat, time:time, grpId: grpId});
+  //console.log("action_log", { seat: seat, time: time }, str);
   ipc_send(
     "action_log",
     { seat: seat, time: time, str: str, grpId: grpId },
@@ -1442,11 +1451,26 @@ function getNameBySeat(seat) {
     if (seat == currentMatch.player.seat) {
       return playerData.name.slice(0, -6);
     } else {
-      return currentMatch.opponent.name.slice(0, -6);
+      let oppName = currentMatch.opponent.name;
+      if (oppName && oppName !== "Sparky") {
+        oppName = oppName.slice(0, -6);
+      }
+      return oppName || "Opponent";
     }
   } catch (e) {
     return "???";
   }
+}
+
+//
+function addCustomDeck(customDeck) {
+  if (decks.index.indexOf(customDeck.id) == -1) {
+    decks.index.push(customDeck.id);
+  }
+  decks[customDeck.id] = customDeck;
+  updateCustomDecks();
+  store.set("decks_index", decks.index);
+  store.set("decks." + customDeck.id, customDeck);
 }
 
 //
@@ -1481,8 +1505,6 @@ function createMatch(arg) {
     ipc_send("overlay_set_bounds", obj);
   }
 
-  let str = JSON.stringify(currentDeck);
-
   currentMatch.player.originalDeck = originalDeck;
   currentMatch.player.deck = originalDeck.clone();
   currentMatch.playerCardsLeft = originalDeck.clone();
@@ -1490,8 +1512,10 @@ function createMatch(arg) {
   currentMatch.opponent.name = arg.opponentScreenName;
   currentMatch.opponent.rank = arg.opponentRankingClass;
   currentMatch.opponent.tier = arg.opponentRankingTier;
+  currentMatch.opponent.cards = [];
   currentMatch.eventId = arg.eventId;
   currentMatch.matchId = arg.matchId + "-" + playerData.arenaId;
+  currentMatch.gameStage = "";
 
   currentMatch.beginTime = matchBeginTime;
 
@@ -1499,7 +1523,9 @@ function createMatch(arg) {
   matchGameStats = [];
   matchCompletedOnGameNumber = 0;
   gameNumberCompleted = 0;
-  gameStage = "";
+  initialLibraryInstanceIds = [];
+  idChanges = {};
+  instanceToCardIdMap = {};
 
   ipc_send("ipc_log", "vs " + currentMatch.opponent.name);
   ipc_send("set_timer", currentMatch.beginTime, windowOverlay);
@@ -1511,8 +1537,9 @@ function createMatch(arg) {
     windowOverlay
   );
 
-  if (currentMatch.eventId == "DirectGame") {
-    httpApi.httpTournamentCheck(currentDeck, currentMatch.opponent.name, true);
+  if (currentMatch.eventId == "DirectGame" && currentDeck) {
+    let str = currentDeck.getSave();
+    httpApi.httpTournamentCheck(str, currentMatch.opponent.name, true);
   }
 
   ipc_send("set_priority_timer", currentMatch.priorityTimers, windowOverlay);
@@ -1667,13 +1694,13 @@ function forceDeckUpdate(removeUsed = true) {
       )
     );
 
-    typeLan = Math.min(odds_sample_size, main.countType("Land"));
-    typeCre = Math.min(odds_sample_size, main.countType("Creature"));
-    typeArt = Math.min(odds_sample_size, main.countType("Artifact"));
-    typeEnc = Math.min(odds_sample_size, main.countType("Enchantment"));
-    typeIns = Math.min(odds_sample_size, main.countType("Instant"));
-    typeSor = Math.min(odds_sample_size, main.countType("Sorcery"));
-    typePla = Math.min(odds_sample_size, main.countType("Planeswalker"));
+    typeLan = main.countType("Land");
+    typeCre = main.countType("Creature");
+    typeArt = main.countType("Artifact");
+    typeEnc = main.countType("Enchantment");
+    typeIns = main.countType("Instant");
+    typeSor = main.countType("Sorcery");
+    typePla = main.countType("Planeswalker");
 
     let chancesObj = {};
     chancesObj.chanceCre = chanceType(typeCre, cardsleft, odds_sample_size);
@@ -1689,7 +1716,7 @@ function forceDeckUpdate(removeUsed = true) {
     currentMatch.playerChances = chancesObj;
   } else {
     let main = currentMatch.playerCardsLeft.mainboard;
-    main.addProperty("chance", card => 1);
+    main.addProperty("chance", () => 1);
 
     let chancesObj = {};
     chancesObj.chanceCre = 0;
@@ -1703,15 +1730,15 @@ function forceDeckUpdate(removeUsed = true) {
   }
 }
 
-function chanceType(typeNumber, cardsleft, odds_sample_size) {
+function chanceType(quantity, cardsleft, odds_sample_size) {
   return (
     Math.round(
       hypergeometricRange(
         1,
-        typeNumber,
+        Math.min(odds_sample_size, quantity),
         cardsleft,
         odds_sample_size,
-        typeNumber
+        quantity
       ) * 1000
     ) / 10
   );
@@ -1761,7 +1788,7 @@ function saveCourse(json) {
 
 //
 function saveMatch(matchId) {
-  console.log(currentMatch.matchId, matchId);
+  //console.log(currentMatch.matchId, matchId);
   if (currentMatch.matchTime == 0 || currentMatch.matchId != matchId) {
     return;
   }
@@ -1783,6 +1810,7 @@ function saveMatch(matchId) {
   });
 
   var match = {};
+  match.onThePlay = currentMatch.onThePlay;
   match.id = currentMatch.matchId;
   match.duration = currentMatch.matchTime;
   match.opponent = {
@@ -1793,10 +1821,18 @@ function saveMatch(matchId) {
     seat: currentMatch.opponent.seat,
     win: ow
   };
+  let rank, tier;
+  if (ranked_events.includes(currentMatch.eventId)) {
+    rank = playerData.rank.limited.rank;
+    tier = playerData.rank.limited.tier;
+  } else {
+    rank = playerData.rank.constructed.rank;
+    tier = playerData.rank.constructed.tier;
+  }
   match.player = {
     name: playerData.name,
-    rank: playerData.rank.constructed.rank,
-    tier: playerData.rank.constructed.tier,
+    rank,
+    tier,
     userid: playerData.arenaId,
     seat: currentMatch.player.seat,
     win: pw

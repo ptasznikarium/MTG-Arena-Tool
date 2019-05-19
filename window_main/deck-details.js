@@ -1,23 +1,29 @@
 /*
 global
+    add,
+    cardsDb,
+    ConicGradient,
     change_background,
     drawDeck,
     drawDeckVisual,
-    ipc_send,
-    change_background,
-    get_deck_types_ammount,
-    get_deck_curve,
+    economyHistory,
     get_deck_colors_ammount,
-    get_deck_lands_ammount,
-    get_deck_missing,
+    get_deck_curve,
     get_deck_export,
     get_deck_export_txt,
+    get_deck_lands_ammount,
+    get_deck_missing,
+    get_deck_types_ammount,
+    ipc_send,
     mana,
-    ConicGradient,
+    orderedCardRarities,
+    orderedCardTypes,
+    orderedCardTypesDesc,
+    orderedColorCodes,
+    orderedManaColors,
+    pop,
     getDeckWinrate,
-    economyHistory,
-    cardsDb,
-    add,
+    getTagColor,
     getBoosterCountEstimate
 */
 
@@ -304,7 +310,9 @@ function deckStatsSection(deck, deck_type) {
     ).appendTo(costSection);
   });
   $(
-    `<div title="Aproximate boosters" class="wc_cost wc_booster">${Math.round(boosterCost)}</div>`
+    `<div title="Aproximate boosters" class="wc_cost wc_booster">${Math.round(
+      boosterCost
+    )}</div>`
   ).appendTo(costSection);
 
   costSection.appendTo(stats);
@@ -377,5 +385,5 @@ function openDeck(deck, deck_type) {
 }
 
 module.exports = {
-  open_deck: openDeck
+  openDeck: openDeck
 };

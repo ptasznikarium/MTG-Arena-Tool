@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/Manuel-777/MTG-Arena-Tool.svg?branch=master)](https://travis-ci.org/Manuel-777/MTG-Arena-Tool)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 # MTG Arena Tool
 An MTG Arena deck tracker and collection manager.
 
@@ -19,6 +22,7 @@ An MTG Arena deck tracker and collection manager.
 - Collection browser
 	- Filter cards by set
 	- Show newly acquired cards
+	- Show incomplete set cards (less than 4 copies)
 	- Sort by set, name and cmc
 	- Advanced card filtering and search
 	- Show cards unowned

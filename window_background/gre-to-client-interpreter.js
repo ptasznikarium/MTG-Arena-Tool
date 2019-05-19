@@ -13,6 +13,7 @@ globals
   gameStage,
   getNameBySeat,
   idChanges,
+  initialLibraryInstanceIds,
   instanceToCardIdMap,
   ipc,
   update_deck
@@ -42,29 +43,36 @@ function keyValuePair(obj, addTo) {
     addTo[obj.key] = obj.f[0];
     return addTo;
   }
-  if (obj.type == "KeyValuePairValueType_None")
-    addTo[obj.key] = obj.valueNone[0];
-  if (obj.type == "KeyValuePairValueType_uint32")
-    addTo[obj.key] = obj.valueUint32[0];
-  if (obj.type == "KeyValuePairValueType_int32")
-    addTo[obj.key] = obj.valueInt32[0];
-  if (obj.type == "KeyValuePairValueType_uint64")
-    addTo[obj.key] = obj.valueUint64[0];
-  if (obj.type == "KeyValuePairValueType_int64")
-    addTo[obj.key] = obj.valueInt64[0];
-  if (obj.type == "KeyValuePairValueType_bool")
-    addTo[obj.key] = obj.valueBool[0];
-  if (obj.type == "KeyValuePairValueType_string")
-    addTo[obj.key] = obj.valueString[0];
-  if (obj.type == "KeyValuePairValueType_float")
-    addTo[obj.key] = obj.valueFloat[0];
-  if (obj.type == "KeyValuePairValueType_double")
-    addTo[obj.key] = obj.valueDouble[0];
+  try {
+    if (obj.type == "KeyValuePairValueType_None")
+      addTo[obj.key] = obj.valueNone;
+    if (obj.type == "KeyValuePairValueType_uint32")
+      addTo[obj.key] = obj.valueUint32;
+    if (obj.type == "KeyValuePairValueType_int32")
+      addTo[obj.key] = obj.valueInt32;
+    if (obj.type == "KeyValuePairValueType_uint64")
+      addTo[obj.key] = obj.valueUint64;
+    if (obj.type == "KeyValuePairValueType_int64")
+      addTo[obj.key] = obj.valueInt64;
+    if (obj.type == "KeyValuePairValueType_bool")
+      addTo[obj.key] = obj.valueBool;
+    if (obj.type == "KeyValuePairValueType_string")
+      addTo[obj.key] = obj.valueString;
+    if (obj.type == "KeyValuePairValueType_float")
+      addTo[obj.key] = obj.valueFloat;
+    if (obj.type == "KeyValuePairValueType_double")
+      addTo[obj.key] = obj.valueDouble;
+
+    if (addTo[obj.key].length == 1) addTo[obj.key] = addTo[obj.key][0];
+  } catch (e) {
+    addTo[obj.key] = undefined;
+  }
+
   return addTo;
 }
 
 function processAnnotations() {
-  currentMatch.annotations.forEach((ann, index) => {
+  currentMatch.annotations.forEach(ann => {
     // if this annotation has already been processed, skip
     if (currentMatch.processedAnnotations.includes(ann.id)) return;
 
@@ -147,7 +155,7 @@ annotationFunctions.AnnotationType_ZoneTransfer = function(ann, details) {
     actionLog(
       seat,
       false,
-      `${playerName} casted ${actionLogGenerateLink(grpId)}`
+      `${playerName} cast ${actionLogGenerateLink(grpId)}`
     );
   }
 
@@ -193,7 +201,7 @@ annotationFunctions.AnnotationType_ZoneTransfer = function(ann, details) {
     let affected = instanceIdToObject(ann.affectedIds[0]);
     let affector = instanceIdToObject(ann.affectorId);
 
-    let text = getNameBySeat(seat);
+    let text = "";
     if (affector.type == "GameObjectType_Ability") {
       text = `${actionLogGenerateLink(
         affector.objectSourceGrpId
@@ -208,6 +216,29 @@ annotationFunctions.AnnotationType_ZoneTransfer = function(ann, details) {
       seat,
       false,
       `${text} returned ${actionLogGenerateLink(affected.grpId)} to ${zone}`
+    );
+  }
+
+  // A card was exiled
+  if (details.category == "Exile") {
+    let affected = instanceIdToObject(ann.affectedIds[0]);
+    let affector = instanceIdToObject(ann.affectorId);
+
+    let text = "";
+    if (affector.type == "GameObjectType_Ability") {
+      text = `${actionLogGenerateLink(
+        affector.objectSourceGrpId
+      )}'s ${actionLogGenerateAbilityLink(affector.grpId)}`;
+    }
+    if (affector.type == "GameObjectType_Card") {
+      text = actionLogGenerateLink(affector.grpId);
+    }
+
+    let seat = affector.ownerSeatId;
+    actionLog(
+      seat,
+      false,
+      `${text} exiled ${actionLogGenerateLink(affected.grpId)}`
     );
   }
 
@@ -255,7 +286,7 @@ annotationFunctions.AnnotationType_ResolutionStart = function(ann, details) {
       false,
       `${actionLogGenerateLink(
         affected.objectSourceGrpId
-      )} 's ${actionLogGenerateAbilityLink(grpId)}`
+      )}'s ${actionLogGenerateAbilityLink(grpId)}`
     );
   }
 };
@@ -317,6 +348,68 @@ annotationFunctions.AnnotationType_TargetSpec = function(ann) {
   actionLog(seat, false, `${text} targetted ${target}`);
 };
 
+annotationFunctions.AnnotationType_Scry = function(ann, details) {
+  let affector = ann.affectorId;
+  if (affector > 3) {
+    affector = instanceIdToObject(affector).ownerSeatId;
+  }
+  let player = getNameBySeat(affector);
+
+  let top = details.topIds;
+  let bottom = details.bottomIds;
+  if (!Array.isArray(top)) {
+    top = top !== undefined ? [top] : [];
+  }
+  if (!Array.isArray(bottom)) {
+    bottom = bottom !== undefined ? [bottom] : [];
+  }
+  let xtop = top.length;
+  let xbottom = bottom.length;
+  let scrySize = xtop + xbottom;
+
+  actionLog(
+    affector,
+    false,
+    `${player} scry ${scrySize}: ${xtop} top, ${xbottom} bottom`
+  );
+  if (affector == currentMatch.player.seat) {
+    if (xtop > 0) {
+      top.forEach(instanceId => {
+        let grpId = instanceIdToObject(instanceId).grpId;
+        actionLog(
+          affector,
+          false,
+          ` ${actionLogGenerateLink(grpId)} to the top`
+        );
+      });
+    }
+    if (xbottom > 0) {
+      bottom.forEach(instanceId => {
+        let grpId = instanceIdToObject(instanceId).grpId;
+        actionLog(
+          affector,
+          false,
+          ` ${actionLogGenerateLink(grpId)} to the bottom`
+        );
+      });
+    }
+  }
+};
+
+annotationFunctions.AnnotationType_CardRevealed = function(ann, details) {
+  if (ann.ignoreForSeatIds == currentMatch.player.seat) return;
+
+  let grpId = ann.affectedIds;
+  let zone = currentMatch.zones[details.source_zone];
+  let owner = zone.ownerSeatId;
+
+  actionLog(
+    owner,
+    false,
+    `revealed ${actionLogGenerateLink(grpId)} from ${zone.type}`
+  );
+};
+
 // Used for debug only.
 function processAll() {
   for (var i = 0; i < currentMatch.latestMessage; i++) {
@@ -344,7 +437,9 @@ function GREMessageByID(msgId, time) {
   }
 
   currentMatch.playerCardsUsed = getPlayerUsedCards();
-  currentMatch.oppCardsUsed = getOppUsedCards();
+  currentMatch.oppCardsUsed = currentMatch.opponent.cards.concat(
+    getOppUsedCards()
+  );
 }
 
 function GREMessage(message, time) {
@@ -357,14 +452,16 @@ function GREMessage(message, time) {
   }
 
   currentMatch.playerCardsUsed = getPlayerUsedCards();
-  currentMatch.oppCardsUsed = getOppUsedCards();
+  currentMatch.oppCardsUsed = currentMatch.opponent.cards.concat(
+    getOppUsedCards()
+  );
 }
 
 function getOppUsedCards() {
   let cardsUsed = [];
   Object.keys(currentMatch.zones).forEach(key => {
     let zone = currentMatch.zones[key];
-    if (zone.objectInstanceIds && zone.type != "ZoneType_Limbo") {
+    if (zone.objectInstanceIds && zone.type !== "ZoneType_Limbo") {
       zone.objectInstanceIds.forEach(id => {
         let grpId;
         try {
@@ -375,7 +472,8 @@ function getOppUsedCards() {
           ) {
             grpId = obj.grpId;
             //cardsUsed.push(cardsDb.get(grpId).name+" - "+zone.type);
-            cardsUsed.push(grpId);
+            // 3 is the code for "Face down card", apparently
+            if (grpId !== 3) cardsUsed.push(grpId);
           }
         } catch (e) {
           //
@@ -392,8 +490,9 @@ function getPlayerUsedCards() {
     let zone = currentMatch.zones[key];
     if (
       zone.objectInstanceIds &&
-      zone.type != "ZoneType_Limbo" &&
-      zone.type != "ZoneType_Revealed"
+      zone.type !== "ZoneType_Limbo" &&
+      zone.type !== "ZoneType_Library" &&
+      zone.type !== "ZoneType_Revealed"
     ) {
       zone.objectInstanceIds.forEach(id => {
         let grpId;
@@ -405,7 +504,7 @@ function getPlayerUsedCards() {
           ) {
             grpId = obj.grpId;
             //cardsUsed.push(cardsDb.get(grpId).name+" - "+zone.type);
-            cardsUsed.push(grpId);
+            if (grpId !== 3) cardsUsed.push(grpId);
           }
         } catch (e) {
           //
@@ -426,7 +525,7 @@ GREMessages.GREMessageType_QueuedGameStateMessage = function(msg) {
 GREMessages.GREMessageType_GameStateMessage = function(msg) {
   let gameState = msg.gameStateMessage;
 
-  if (currentMatch.gameInfo) {
+  if (gameState.gameInfo) {
     checkGameInfo(currentMatch.gameInfo);
     currentMatch.gameInfo = gameState.gameInfo;
   }
@@ -502,30 +601,39 @@ function checkForStartingLibrary() {
   Object.keys(currentMatch.zones).forEach(key => {
     let zone = currentMatch.zones[key];
     if (zone.ownerSeatId == currentMatch.player.seat) {
-      if (zone.type == "ZoneType_Hand") zoneHand = zone;
-      if (zone.type == "ZoneType_Library") zoneLibrary = zone;
+      if (zone.type == "ZoneType_Hand") {
+        zoneHand = zone;
+      }
+      if (zone.type == "ZoneType_Library") {
+        zoneLibrary = zone;
+      }
     }
   });
 
-  if (gameStage != "GameStage_Start") return;
-  if (!zoneHand.objectInstanceIds) return;
-  if (!zoneLibrary.objectInstanceIds) return;
+  if (currentMatch.gameStage !== "GameStage_Start") return -1;
+  if (!zoneHand || !zoneHand.objectInstanceIds) return -2;
+  if (!zoneLibrary || !zoneLibrary.objectInstanceIds) return -3;
 
   let hand = zoneHand.objectInstanceIds || [];
   let library = zoneLibrary.objectInstanceIds || [];
   // Check that a post-mulligan scry hasn't been done
-  if (library.length == 0 || library[library.length - 1] < library[0]) return;
+  if (library.length == 0 || library[library.length - 1] < library[0])
+    return -4;
 
   if (hand.length + library.length == currentDeck.mainboard.count()) {
     if (hand.length >= 2 && hand[0] == hand[1] + 1) hand.reverse();
     initialLibraryInstanceIds = [...hand, ...library];
   }
+  return initialLibraryInstanceIds;
 }
 
 function checkGameInfo(gameInfo) {
-  if (gameInfo.stage && gameInfo.stage != gameStage) {
-    gameStage = gameInfo.stage;
-    if (gameStage == "GameStage_Start") {
+  //console.log(`>> GameStage: ${gameInfo.stage} (${currentMatch.gameStage})`);
+  //actionLog(-1, false, `>> GameStage: ${gameInfo.stage} (${currentMatch.gameStage})`);
+  if (currentMatch.gameStage !== gameInfo.stage) {
+    currentMatch.gameStage = gameInfo.stage;
+    if (currentMatch.gameStage == "GameStage_GameOver") {
+      currentMatch.opponent.cards = currentMatch.oppCardsUsed;
       currentMatch.processedAnnotations = [];
       currentMatch.timers = {};
       currentMatch.zones = {};
@@ -536,9 +644,6 @@ function checkGameInfo(gameInfo) {
       currentMatch.turnInfo = {};
       currentMatch.playerCardsUsed = [];
       currentMatch.oppCardsUsed = [];
-      initialLibraryInstanceIds = [];
-      idChanges = {};
-      instanceToCardIdMap = {};
       currentMatch.game = gameInfo.gameNumber;
     }
   }
@@ -554,6 +659,13 @@ function checkGameInfo(gameInfo) {
 }
 
 function checkTurnDiff(turnInfo) {
+  if (
+    turnInfo.turnNumber &&
+    turnInfo.turnNumber == 1 &&
+    turnInfo.activePlayer
+  ) {
+    currentMatch.onThePlay = turnInfo.activePlayer;
+  }
   if (currentMatch.turnInfo.turnNumber !== turnInfo.turnNumber) {
     if (turnInfo.priorityPlayer !== currentMatch.turnInfo.currentPriority) {
       changePriority(
@@ -587,83 +699,6 @@ function checkTurnDiff(turnInfo) {
   }
 }
 
-GREMessages.GREMessageType_MulliganReq = function() {};
-
-GREMessages.GREMessageType_ActionsAvailableReq = function() {};
-
-GREMessages.GREMessageType_ChooseStartingPlayerReq = function() {};
-
-GREMessages.GREMessageType_ConnectResp = function() {};
-
-GREMessages.GREMessageType_MulliganReq = function() {};
-
-GREMessages.GREMessageType_OrderReq = function() {};
-
-GREMessages.GREMessageType_PromptReq = function() {};
-
-GREMessages.GREMessageType_Revealhandreq = function() {};
-
-GREMessages.GREMessageType_Selectnreq = function() {};
-/*
-GREMessages.GREMessageType_DeclareAttackersReq = function(msg) {
-  msg.declareAttackersReq.attackers.forEach(attacker => {
-    let obj = currentMatch.gameObjs[attacker.attackerInstanceId];
-    let recipient = "";
-    if (attacker.legalDamageRecipients) {
-      if (attacker.legalDamageRecipients[0].type == "DamageRecType_Player") {
-          recipient = getNameBySeat(
-            attacker.legalDamageRecipients[0].playerSystemSeatId
-          );
-        }
-        if (attacker.legalDamageRecipients[0].type == "DamageRecType_Planeswalker") {
-          recipient = actionLogGenerateLink(
-            attacker.legalDamageRecipients[0].planeswalkerinstanceid
-          );
-        }
-    }
-    else {
-      if (attacker.selectedDamageRecipient.type == "DamageRecType_Player") {
-        recipient = getNameBySeat(
-          attacker.selectedDamageRecipient.playerSystemSeatId
-        );
-      }
-      if (attacker.selectedDamageRecipient.type == "DamageRecType_Planeswalker") {
-        recipient = actionLogGenerateLink(
-          attacker.selectedDamageRecipient.planeswalkerinstanceid
-        );
-      }
-    }
-    actionLog(
-      obj.controllerSeatId,
-      false,
-      `${actionLogGenerateLink(obj.grpId)} attacked ${recipient}`
-    );
-  });
-};
-*/
-
-GREMessages.GREMessageType_Submitattackersresp = function() {};
-
-GREMessages.GREMessageType_Declareblockersreq = function() {};
-
-GREMessages.GREMessageType_Submitblockersresp = function() {};
-
-GREMessages.GREMessageType_Assigndamagereq = function() {};
-
-GREMessages.GREMessageType_Assigndamageconfirmation = function() {};
-
-GREMessages.GREMessageType_Ordercombatdamagereq = function() {};
-
-GREMessages.GREMessageType_Orderdamageconfirmation = function() {};
-
-GREMessages.GREMessageType_Selecttargetsreq = function() {};
-
-GREMessages.GREMessageType_Submittargetsresp = function() {};
-
-GREMessages.GREMessageType_Paycostsreq = function() {};
-
-GREMessages.GREMessageType_Intermissionreq = function() {};
-
 GREMessages.GREMessageType_DieRollResultsResp = function(msg) {
   if (msg.dieRollResultsResp) {
     let highest = msg.dieRollResultsResp.playerDieRolls.reduce((a, b) => {
@@ -678,41 +713,8 @@ GREMessages.GREMessageType_DieRollResultsResp = function(msg) {
   return true;
 };
 
-GREMessages.GREMessageType_Selectreplacementreq = function() {};
-
-GREMessages.GREMessageType_Selectngroupreq = function() {};
-
-GREMessages.GREMessageType_Alternativecostreq = function() {};
-
-GREMessages.GREMessageType_Distributionreq = function() {};
-
-GREMessages.GREMessageType_Numericinputreq = function() {};
-
-GREMessages.GREMessageType_Searchreq = function() {};
-
-GREMessages.GREMessageType_Optionalactionmessage = function() {};
-
-GREMessages.GREMessageType_Castingtimeoptionsreq = function() {};
-
-GREMessages.GREMessageType_Selectmanatypereq = function() {};
-
-GREMessages.GREMessageType_Selectfromgroupsreq = function() {};
-
-GREMessages.GREMessageType_Searchfromgroupsreq = function() {};
-
-GREMessages.GREMessageType_Gatherreq = function() {};
-
-GREMessages.GREMessageType_Queuedgamestatemessage = function() {};
-
-GREMessages.GREMessageType_Uimessage = function() {};
-
-GREMessages.GREMessageType_Submitdeckreq = function() {};
-
-GREMessages.GREMessageType_Edictalmessage = function() {};
-
-GREMessages.GREMessageType_Timeoutmessage = function() {};
-
 module.exports = {
   GREMessage,
+  GREMessageByID,
   processAll
 };

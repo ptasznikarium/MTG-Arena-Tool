@@ -5,7 +5,21 @@ function onLabelOutLogInfo(entry, json) {
   if (skipMatch) return;
 
   if (json.params.messageName == "DuelScene.GameStop") {
+    currentMatch.opponent.cards = currentMatch.oppCardsUsed;
+
     var payload = json.params.payloadObject;
+
+    let loserName = getNameBySeat(payload.winningTeamId == 1 ? 2 : 1);
+    if (payload.winningReason == "ResultReason_Concede") {
+      actionLog(-1, false, `${loserName} Conceded`);
+    }
+    if (payload.winningReason == "ResultReason_Timeout") {
+      actionLog(-1, false, `${loserName} Timed out`);
+    }
+
+    let playerName = getNameBySeat(payload.winningTeamId);
+    actionLog(-1, false, `${playerName} Wins!`);
+
     var mid = payload.matchId + "-" + playerData.arenaId;
     var time = payload.secondsCount;
     if (mid == currentMatch.matchId) {
@@ -72,7 +86,7 @@ function onLabelOutLogInfo(entry, json) {
         });
 
         game.sideboardChanges = sideboardChanges;
-        game.deck = JSON.parse(JSON.stringify(currentMatch.player.deck.getSave()));
+        game.deck = objectClone(currentMatch.player.deck.getSave());
       }
 
       game.handLands = game.handsDrawn.map(
@@ -135,12 +149,12 @@ function onLabelGreToClient(entry, json) {
 
   json = json.greToClientEvent.greToClientMessages;
   json.forEach(function(msg) {
+    let msgId = msg.msgId;
     greToClientInterpreter.GREMessage(msg, logTime);
     /*
-    let msgId = msg.msgId;
     currentMatch.GREtoClient[msgId] = msg;
     currentMatch.latestMessage = msgId;
-    greToClientInterpreter.GREMessageByID(msg, logTime);
+    greToClientInterpreter.GREMessageByID(msgId, logTime);
     */
   });
 }
@@ -175,33 +189,6 @@ function onLabelClientToMatchServiceMessageTypeClientToGREMessage(entry, json) {
     currentMatch.player.deck = newDeck;
     console.log("> ", currentMatch.player.deck);
   }
-}
-
-function onLabelInEventGetPlayerCourse(entry, json) {
-  if (!json) return;
-
-  if (json.Id != "00000000-0000-0000-0000-000000000000") {
-    json.date = parseWotcTime(entry.timestamp);
-    json._id = json.Id;
-    delete json.Id;
-
-    if (json.CourseDeck) {
-      json.CourseDeck.colors = get_deck_colors(json.CourseDeck);
-      //json.date = timestamp();
-      //console.log(json.CourseDeck, json.CourseDeck.colors)
-      httpApi.httpSubmitCourse(json);
-      saveCourse(json);
-    }
-    select_deck(json);
-  }
-}
-
-function onLabelInEventGetPlayerCourseV2(entry, json) {
-  if (!json) return;
-  if (json.CourseDeck) {
-    json.CourseDeck = convert_deck_from_v3(json.CourseDeck);
-  }
-  onLabelInEventGetPlayerCourse(entry, json);
 }
 
 function onLabelInEventGetCombinedRankInfo(entry, json) {
@@ -257,9 +244,6 @@ function onLabelInDeckGetDeckLists(entry, json) {
     let deckId = deck.id;
     deck.tags = decks_tags[deckId];
     if (!deck.tags) deck.tags = [];
-    if (deck.tags.indexOf(formats[deck.format]) == -1) {
-      deck.tags.push(formats[deck.format]);
-    }
 
     decks[deckId] = deck;
     if (decks["index"].indexOf(deckId) == -1) {
@@ -284,13 +268,7 @@ function onLabelInEventGetPlayerCourses(entry, json) {
   json.forEach(course => {
     if (course.CurrentEventState != "PreMatch") {
       if (course.CourseDeck != null) {
-        if (decks.index.indexOf(course.CourseDeck.id) == -1) {
-          decks.index.push(course.CourseDeck.id);
-        }
-        decks[course.CourseDeck.id] = course.CourseDeck;
-        updateCustomDecks();
-        store.set("decks_index", decks.index);
-        store.set("decks." + course.CourseDeck.id, course.CourseDeck);
+        addCustomDeck(course.CourseDeck);
       }
     }
   });
@@ -304,6 +282,34 @@ function onLabelInEventGetPlayerCoursesV2(entry, json) {
     }
   });
   onLabelInEventGetPlayerCourses(entry, json);
+}
+
+function onLabelInEventGetPlayerCourse(entry, json) {
+  if (!json) return;
+
+  if (json.Id != "00000000-0000-0000-0000-000000000000") {
+    json.date = parseWotcTime(entry.timestamp);
+    json._id = json.Id;
+    delete json.Id;
+
+    if (json.CourseDeck) {
+      json.CourseDeck.colors = get_deck_colors(json.CourseDeck);
+      addCustomDeck(json.CourseDeck);
+      //json.date = timestamp();
+      //console.log(json.CourseDeck, json.CourseDeck.colors)
+      httpApi.httpSubmitCourse(json);
+      saveCourse(json);
+    }
+    select_deck(json);
+  }
+}
+
+function onLabelInEventGetPlayerCourseV2(entry, json) {
+  if (!json) return;
+  if (json.CourseDeck) {
+    json.CourseDeck = convert_deck_from_v3(json.CourseDeck);
+  }
+  onLabelInEventGetPlayerCourse(entry, json);
 }
 
 function onLabelInDeckUpdateDeck(entry, json) {
@@ -407,7 +413,6 @@ function minifiedDelta(delta) {
 function onLabelInventoryUpdated(entry, transaction) {
   // if (!transaction) return;
 
-
   // Store this in case there are any future date parsing issues
   transaction.timestamp = entry.timestamp;
 
@@ -418,7 +423,9 @@ function onLabelInventoryUpdated(entry, transaction) {
   // FIXME: Sort out the parseWotcTime2 parsing
   let dateIsInvalid = !transaction.date || isNaN(transaction.date.getTime());
   if (dateIsInvalid) {
-    console.log(`Invalid date ('${entry.timestamp}') - using current date as backup.`);
+    console.log(
+      `Invalid date ('${entry.timestamp}') - using current date as backup.`
+    );
     transaction.date = new Date();
   }
 
@@ -523,7 +530,23 @@ function onLabelOutDirectGameChallenge(entry, json) {
   deck = JSON.parse(deck);
   select_deck(deck);
 
-  httpApi.httpTournamentCheck(deck, json.params.opponentDisplayName, false, json.params.playFirst, json.params.bo3);
+  httpApi.httpTournamentCheck(
+    deck,
+    json.params.opponentDisplayName,
+    false,
+    json.params.playFirst,
+    json.params.bo3
+  );
+}
+
+function onLabelOutEventAIPractice(entry, json) {
+  if (!json) return;
+  var deck = json.params.deck;
+
+  deck = replaceAll(deck, '"Id"', '"id"');
+  deck = replaceAll(deck, '"Quantity"', '"quantity"');
+  deck = JSON.parse(deck);
+  select_deck(deck);
 }
 
 function onLabelInDraftDraftStatus(entry, json) {

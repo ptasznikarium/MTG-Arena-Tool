@@ -6,12 +6,19 @@ const {
   app,
   globalShortcut,
   Menu,
+  MenuItem,
   Tray,
   clipboard
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const {autoUpdater} = require("electron-updater");
+const { autoUpdater } = require("electron-updater");
+const Store = require("electron-store");
+
+var rememberStore = new Store({
+  name: "remember",
+  defaults: {}
+});
 
 app.setAppUserModelId("com.github.manuel777.mtgatool");
 
@@ -72,15 +79,14 @@ function startUpdater() {
     updaterWindow.show();
   });
 
+  let betaChannel = rememberStore.get("settings.beta_channel");
+  if (betaChannel) {
+    autoUpdater.allowPrerelease = true;
+  }
+
   autoUpdater.checkForUpdatesAndNotify();
 }
 
-/*
-autoUpdater.on("checking-for-update", () => {
-});
-autoUpdater.on("update-available", info => {
-});
-*/
 autoUpdater.on("update-not-available", info => {
   console.log("Update not available", info);
   if (mainWindow) {
@@ -163,7 +169,6 @@ function startApp() {
 
       case "ipc_error":
         console.log("IPC ERROR: ", arg);
-        background.webContents.send("error", arg);
         break;
 
       case "set_settings":
@@ -198,13 +203,6 @@ function startApp() {
         overlay.webContents.send("set_cards", arg.cards);
         break;
 
-      case "renderer_update_install":
-        if (updateState == 3) {
-          autoUpdater.quitAndInstall();
-        }
-        background.webContents.send("update_install", 1);
-        break;
-
       case "set_opponent_rank":
         overlay.webContents.send("set_opponent_rank", arg.rank, arg.str);
         break;
@@ -237,7 +235,7 @@ function startApp() {
 
       case "overlay_show":
         if (!overlay.isVisible()) {
-          overlay.show();
+          overlay.showInactive();
         }
         break;
 

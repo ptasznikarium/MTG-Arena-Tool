@@ -17,7 +17,7 @@ Press `Alt+SPACE` again, then M to select the "Move" menu choice.
 Press one of the arrow keys to initiate the movement.
 Now just use the mouse to place the window where you want.
 
-[Link](https://superuser.com/questions/53585/how-to-move-windows-that-open-up-offscreen)
+[Link](https://superuser.com/a/53590)
 
 ### If the app freezes in loading "Just a second" page:
 This is probably caused by an error reading the user configuration, probably due to an unhandled exception or new data added from MTGA that mtgatool is not handling properly. Bear in mind this issue is **not** because of a bad or improper installation, so reinstalling will make no difference. Altrough, you can roll back to a previous version safely if an update caused it.

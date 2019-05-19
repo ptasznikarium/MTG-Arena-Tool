@@ -12,11 +12,15 @@
     "jquery": true
   },
   "rules": {
-    "prettier/prettier": "error",
     "allowEmptyCatch": true,
     "no-cond-assign": 0,
     "no-console": "off",
-    "complexity": ["warn", 20],
+    "no-unused-vars": "warn",
+    "no-redeclare": "warn",
+    "no-undef": "error",
+    "no-global-assign": "warn",
+    "no-empty": "warn",
+    "complexity": ["warn", 40],
     "max-statements": ["warn", 100]
   }
 }

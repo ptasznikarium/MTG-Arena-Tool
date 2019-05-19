@@ -1,12 +1,14 @@
 const electron = require("electron");
-const fs = require('fs');
+const fs = require("fs");
 
 // Made a singleton class for this
 // Makes it simpler to update ;)
 // Some other things should go here later, like updating from MTGA Servers themselves.
 class Database {
   constructor() {
-    let json = JSON.parse(fs.readFileSync(`${__dirname}/../resources/database.json`, 'utf8'));   
+    let json = JSON.parse(
+      fs.readFileSync(`${__dirname}/../resources/database.json`, "utf8")
+    );
     this.cards = json;
   }
 

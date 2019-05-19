@@ -1,3 +1,7 @@
+/*
+globals
+  transform
+*/
 // Utility functions that belong only to background
 
 const parse = require("date-fns").parse;

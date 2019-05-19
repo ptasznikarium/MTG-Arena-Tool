@@ -22,6 +22,8 @@ const HIDDEN_PW = "********";
 const math = require("mathjs");
 math.config({ precision: 2000 });
 
+require("conic-gradient");
+
 const Database = require("../shared/database.js");
 const cardsDb = new Database();
 
@@ -618,9 +620,28 @@ const enums = {
 var setsList = cardsDb.get("sets");
 var eventsList = cardsDb.get("events");
 var eventsToFormat = cardsDb.get("events_format");
+const formats = {
+  Standard: "Standard",
+  TraditionalStandard: "Traditional Standard",
+  Draft: "Draft",
+  Sealed: "Sealed",
+  Pauper: "Pauper",
+  Singleton: "Singleton",
+  Cascade: "Cascade",
+  Pandemonium: "Pandemonium",
+  NoInstants: "No Instants",
+  DirectGame: "Direct Game",
+  precon: "Preconstructed",
+  Ravnica: "Ravnica Block",
+  Ixalan: "Ixalan Block",
+  GRN: "Ravnica Constructed",
+  XLN: "Ixalan Constructed"
+};
 var rankedEvents = cardsDb.get("ranked_events");
 var renderer = 0;
-var rarities = ["common", "uncommon", "rare", "mythic"];
+const orderedColorCodes = ["w", "u", "b", "r", "g", "c"];
+const orderedColorCodesCommon = ["w", "u", "b", "r", "g"];
+const RANKS = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic"];
 
 var draftRanks = [];
 draftRanks[12] = "A+";
@@ -678,6 +699,10 @@ function queryElements(selectors, parentNode = document) {
   return [...parentNode.querySelectorAll(selectors)];
 }
 
+function queryElementsByClass(selectors, parentNode = document) {
+  return [...parentNode.getElementsByClassName(selectors)];
+}
+
 // useful alias
 window.$$ = queryElements;
 
@@ -701,154 +726,24 @@ function wrap(element, wrapper) {
   return element;
 }
 
-function addCardTile(grpId, indent, quantity, element, showWildcards = false, deck = null, isSideboard = false) {
-  // if element is a jquery object convert to bare DOM element
-  // TODO: Remove this once jQuery is removed.
-  if (element instanceof jQuery) {
-    element = element[0];
-  }
-
-  if (quantity !== 0) {
-    var cont = createDivision(["card_tile_container", "click-on"]);
-
-    cont.dataset["grpId"] = grpId;
-    cont.dataset["id"] = indent;
-    cont.dataset["quantity"] = quantity;
-
-    var ww, ll;
-    if (!isNumber(quantity)) {
-      ww = 64;
-      ll = 48;
-      let col = get_rank_class(quantity);
-      cont.appendChild(
-        createDivision(["card_tile_odds", col], `<span>${quantity}</span>`)
-      );
-    } else if (quantity == 9999) {
-      quantity = 1;
-      ww = 32;
-      ll = 17;
-
-      var quantityDiv = createDivision(
-        ["card_tile_quantity"],
-        `<span>${quantity}</span>`
-      );
-      quantityDiv.style.cssText =
-        "color: rgba(255, 255, 255, 0); min-width: 0px; width: 0px;";
-      cont.appendChild(quantityDiv);
-    } else {
-      ww = 64;
-      ll = 49;
-      var quantityDiv = createDivision(
-        ["card_tile_quantity"],
-        `<span>${quantity}</span>`
-      );
-      cont.appendChild(quantityDiv);
-    }
-    element.appendChild(cont);
-    var card = cardsDb.get(grpId);
-    var cardTile = createDivision([
-      "card_tile",
-      get_frame_class(card ? card.frame : [])
-    ]);
-    cardTile.id = `t${grpId + indent}`;
-    cardTile.style.cssText = `min-width: calc(100% - ${ww}px);`;
-    // cardTile.style.minWidth = `calc(100% - ${ww}px)`;
-    cont.appendChild(cardTile);
-
-    // Glow hover
-    var glow = createDivision(["card_tile_glow"]);
-    glow.id = `t${grpId + indent}`;
-    glow.style.cssText = `min-width: calc(100% - ${ww}px); left: calc(0px - 100% + ${ll}px)`;
-    cont.appendChild(glow);
-
-    if (card) {
-      addCardHover(glow, card);
-      glow.addEventListener("mouseenter", evt => {
-        cardTile.style.marginTop = "0";
-      });
-      glow.addEventListener("mouseleave", evt => {
-        cardTile.style.marginTop = "3px";
-      });
-
-      glow.addEventListener("click", evt => {
-        if (card.dfc == "SplitHalf") {
-          card = cardsDb.get(card.dfcId);
-        }
-        shell.openExternal(
-          `https://scryfall.com/card/${get_set_scryfall(card.set)}/${
-            card.cid
-          }/${card.name}`
-        );
-      });
-    }
-
-    //
-    var fl = createDivision(["flex_item"]);
-    fl.appendChild(
-      createDivision(["card_tile_name"], card ? card.name : "Unknown")
-    );
-    cardTile.appendChild(fl);
-
-    var fl2 = createDivision(["flex_item"]);
-    fl2.style.lineHeight = "26px";
-    cardTile.appendChild(fl2);
-
-    if (!card) return cont;
-
-    var prevc = true;
-    card.cost.forEach(function(cost) {
-      if (/^(x|\d)+$/.test(cost) && prevc == false) {
-        fl2.innerHTML += "//";
-      }
-      fl2.appendChild(createDivision(["mana_s16", "flex_end", `mana_${cost}`]));
-
-      prevc = /^\d+$/.test(cost);
-    });
-
-    if (showWildcards && renderer == 0) {
-      if (card.type.indexOf("Basic Land") == -1) {
-        let missing = 0;
-        if (deck) {
-            missing = get_wc_missing(deck, grpId, isSideboard);
-        }
-
-        let xoff = rarities.indexOf(card.rarity) * -24;
-
-        //if (cards[grpId] == undefined) {
-        if (missing > 0) {
-          let yoff = missing * -24;
-
-          var asasdf = createDivision(["not_owned_sprite"]);
-          asasdf.style.cssText = `background-position: ${xoff}px ${yoff}px; left: calc(0px - 100% + ${ww -
-            14}px);`;
-          asasdf.title = "${missing} missing";
-          cont.appendChild(asasdf);
-        }
-        /*}
-        else if (missing > cards[grpId]) {
-          let yoff = (missing - cards[grpId]) * -24;
-          cont.append(`<div style="background-position: ${xoff}px ${yoff}px; left: calc(0px - 100% + ${(ww-14)}px);" class="not_owned_sprite" title="${(missing-cards[grpId])} missing"></div>`);
-        }
-        */
-      }
-    }
-
-    return cont;
-  }
-  return false;
-}
-
 /**
  * Creates a select box
  * This is a "fixed" version of SelectAdd and should replace it.
  **/
-function createSelect(parent, options, current, callback, divClass, optionFormatter) {
+function createSelect(
+  parent,
+  options,
+  current,
+  callback,
+  divClass,
+  optionFormatter
+) {
   let selectContainer = createDivision(["select_container", divClass]);
   selectContainer.id = divClass;
   if (!options.includes(current)) current = options[0];
   selectContainer.value = current;
   let currentDisplay = current;
-  if (typeof optionFormatter === 'function') {
+  if (typeof optionFormatter === "function") {
     currentDisplay = optionFormatter(current);
   }
   let selectButton = createDivision(["select_button"], currentDisplay);
@@ -866,7 +761,7 @@ function createSelect(parent, options, current, callback, divClass, optionFormat
       for (let i = 0; i < options.length; i++) {
         if (options[i] !== current) {
           let optionDisplay = options[i];
-          if (typeof optionFormatter === 'function') {
+          if (typeof optionFormatter === "function") {
             optionDisplay = optionFormatter(optionDisplay);
           }
 
@@ -1029,7 +924,7 @@ function attachOwnerhipStars(card, starContainer) {
     let color = "gray";
 
     if (i < owned) color = "green";
-    if (aquired && i >= owned-aquired && i < owned) color = "orange";
+    if (aquired && i >= owned - aquired && i < owned) color = "orange";
 
     starContainer.appendChild(
       createDivision([`inventory_card_quantity_${color}`])
@@ -1089,56 +984,21 @@ function get_rank_index_16(_rank) {
   return ii;
 }
 
-//
-function addCardSeparator(i, element, number = 0) {
-  if (element instanceof jQuery) {
-    element = element[0];
-  }
-
-  var str = "";
-  switch (i) {
-    case 1:
-      str = "Creature";
-      break;
-    case 2:
-      str = "Planeswalker";
-      break;
-    case 3:
-      str = "Instant";
-      break;
-    case 4:
-      str = "Sorcery";
-      break;
-    case 5:
-      str = "Artifact";
-      break;
-    case 6:
-      str = "Enchantment";
-      break;
-    case 7:
-      str = "Land";
-      break;
-    case 98:
-      str = "Mainboard";
-      break;
-    case 99:
-      str = "Sideboard";
-      break;
-    default:
-      str = i;
-      break;
-  }
-
-  if (number > 0) {
-    str += ` (${number})`;
-  }
-
-  element.appendChild(createDivision(["card_tile_separator"], str));
+function getDeck(deckId) {
+  const matches = decks.filter(deck => deck.id === deckId);
+  if (!matches.length) return null;
+  return matches[0];
 }
 
-//
-function isNumber(n) {
-  return !isNaN(parseFloat(n)) && isFinite(n);
+function doesDeckStillExist(deckId) {
+  return decks.filter(deck => deck.id === deckId).length > 0;
+}
+
+function getRecentDeckName(deckId) {
+  if (doesDeckStillExist(deckId)) {
+    return getDeck(deckId).name;
+  }
+  return deckId;
 }
 
 //
@@ -1148,6 +1008,20 @@ function getReadableEvent(arg) {
   }
 
   return arg;
+}
+
+//
+function getReadableFormat(format) {
+  if (format in formats) {
+    return formats[format];
+  }
+  return format || "Unknown";
+}
+
+function getReadableQuest(questCode) {
+  // FIXME: Can we get a human readable quest name?
+  // For now lets just use a small portion of the ID.
+  return `#${questCode.substring(0, 6)}`;
 }
 
 //
@@ -1238,16 +1112,6 @@ function deck_count_types(deck, type, side) {
 }
 
 //
-function deck_count(deck) {
-  let count = 0;
-  deck.mainDeck.forEach(card => {
-    if (card.quantity == 9999) count += 1;
-    else count += card.quantity;
-  });
-  return count;
-}
-
-//
 function compare_cards(a, b) {
   // Yeah this is lazy.. I know
   a = cardsDb.get(a.id);
@@ -1296,6 +1160,15 @@ function compare_chances(a, b) {
   }
 
   return 0;
+}
+
+function compare_decks(a, b) {
+  const aName = getRecentDeckName(a.id);
+  const aExists = doesDeckStillExist(a.id) ? 1 : 0;
+  const bName = getRecentDeckName(b.id);
+  const bExists = doesDeckStillExist(b.id) ? 1 : 0;
+  // sort by existence, then name
+  return bExists - aExists || aName.localeCompare(bName);
 }
 
 //
@@ -1370,13 +1243,22 @@ function get_set_code(set) {
 
 //
 class CountStats {
-  constructor(owned = 0, total = 0, unique = 0, complete = 0, wanted = 0, uniqueWanted = 0) {
+  constructor(
+    owned = 0,
+    total = 0,
+    unique = 0,
+    complete = 0,
+    wanted = 0,
+    uniqueWanted = 0,
+    uniqueOwned = 0
+  ) {
     this.owned = owned;
     this.total = total;
     this.unique = unique;
     this.complete = complete; // all 4 copies of a card
     this.wanted = wanted;
     this.uniqueWanted = uniqueWanted;
+    this.uniqueOwned = uniqueOwned;
   }
 
   get percentage() {
@@ -1409,7 +1291,9 @@ class SetStats {
       acc.owned += c.owned;
       acc.total += c.total;
       acc.unique += c.unique;
+      acc.complete += c.complete;
       acc.wanted += c.wanted;
+      acc.uniqueOwned += c.uniqueOwned;
       return acc;
     });
   }
@@ -1418,8 +1302,7 @@ class SetStats {
 //
 function get_collection_stats() {
   const stats = {
-    complete: new SetStats("complete"),
-    singles: new SetStats("singles")
+    complete: new SetStats("complete")
   };
 
   for (var set in setsList) {
@@ -1440,37 +1323,36 @@ function get_collection_stats() {
         // add to totals
         stats[card.set][card.rarity].total += 4;
         stats.complete[card.rarity].total += 4;
-        stats.singles[card.rarity].total += 1;
         stats[card.set][card.rarity].unique += 1;
         stats.complete[card.rarity].unique += 1;
-        stats.singles[card.rarity].unique += 1;
 
         // add cards we own
         if (cards[grpId] !== undefined) {
           var owned = cards[grpId];
           stats[card.set][card.rarity].owned += owned;
           stats.complete[card.rarity].owned += owned;
-          stats.singles[card.rarity].owned += 1;
+          stats[card.set][card.rarity].uniqueOwned += 1;
+          stats.complete[card.rarity].uniqueOwned += 1;
 
           // count complete sets we own
           if (owned == 4) {
             stats[card.set][card.rarity].complete += 1;
             stats.complete[card.rarity].complete += 1;
-            stats.singles[card.rarity].complete += 1;
           }
         }
 
         // count cards we know we want across decks
-        let deckWantedCounts = decks.map(deck => getCardsMissingCount(deck, grpId));
-        let wanted = Math.max(...deckWantedCounts);
+        const wanted = Math.max(
+          ...decks
+            .filter(deck => deck && !deck.archived)
+            .map(deck => getCardsMissingCount(deck, grpId))
+        );
         stats[card.set][card.rarity].wanted += wanted;
         stats.complete[card.rarity].wanted += wanted;
-        stats.singles[card.rarity].wanted += Math.min(1, wanted);
 
         // count unique cards we know we want across decks
         stats[card.set][card.rarity].uniqueWanted += Math.min(1, wanted);
         stats.complete[card.rarity].uniqueWanted += Math.min(1, wanted);
-        stats.singles[card.rarity].uniqueWanted += Math.min(1, wanted);
       }
     }
   });
@@ -1697,37 +1579,6 @@ function compare_colors(color_a, color_b) {
   return true;
 }
 
-function get_rank_class(ranking) {
-  switch (ranking) {
-    case "A+":
-      return "blue";
-    case "A":
-      return "blue";
-
-    case "A-":
-      return "green";
-    case "B+":
-      return "green";
-    case "B":
-      return "green";
-
-    case "C-":
-      return "orange";
-    case "D+":
-      return "orange";
-
-    case "D":
-      return "orange";
-    case "D-":
-      return "red";
-    case "F":
-      return "red";
-
-    default:
-      return "white";
-  }
-}
-
 //
 function get_wc_missing(deck, grpid, isSideboard) {
   let mainQuantity = 0;
@@ -1766,7 +1617,7 @@ function get_wc_missing(deck, grpid, isSideboard) {
   if (isSideboard) {
     copiesLeft = Math.max(0, copiesLeft - mainQuantity);
 
-    let infiniteCards = [ 67306, 69172 ] // petitioners, rat colony, etc
+    let infiniteCards = [67306, 69172]; // petitioners, rat colony, etc
     if (have >= 4 && infiniteCards.indexOf(grpid) >= 0) {
       copiesLeft = 4;
     }
@@ -1785,7 +1636,7 @@ function get_deck_missing(deck) {
     let grpid = card.id;
     // process each card at most once
     if (alreadySeenIds.has(grpid)) {
-        return;
+      return;
     }
     let rarity = cardsDb.get(grpid).rarity;
     missing[rarity] += getCardsMissingCount(deck, grpid);
@@ -1805,15 +1656,17 @@ function getCardsMissingCount(deck, grpid) {
 //
 function getBoosterCountEstimate(wildcards) {
   let boosterCost = 0;
-  let boosterEstimates = { common: 3.36, uncommon: 2.6, rare: 5.72, mythic: 13.24 };
+  let boosterEstimates = {
+    common: 3.36,
+    uncommon: 2.6,
+    rare: 5.72,
+    mythic: 13.24
+  };
   for (let rarity in boosterEstimates) {
     // accept either short or long form of keys in argument
     let shortForm = rarity[0]; // grab first letter
     let missing = wildcards[rarity] || wildcards[shortForm] || 0;
-    boosterCost = Math.max(
-        boosterCost,
-        boosterEstimates[rarity] * missing
-    );
+    boosterCost = Math.max(boosterCost, boosterEstimates[rarity] * missing);
   }
   return Math.round(boosterCost);
 }
@@ -2174,71 +2027,14 @@ function convert_deck_from_v3(deck) {
     if (key === "mainDeck" || key === "sideboard") {
       let ret = [];
       for (let i = 0; i < value.length; i += 2) {
-        ret.push({ id: value[i], quantity: value[i + 1] });
+        if (value[i + 1] > 0) {
+          ret.push({ id: value[i], quantity: value[i + 1] });
+        }
       }
       return ret;
     }
     return value;
   });
-}
-
-//
-function get_frame_class(frame) {
-  if (frame.length == 0) {
-    return "tile_c";
-  }
-  if (frame.length == 1) {
-    if (frame.includes(1)) {
-      return "tile_w";
-    }
-    if (frame.includes(2)) {
-      return "tile_u";
-    }
-    if (frame.includes(3)) {
-      return "tile_b";
-    }
-    if (frame.includes(4)) {
-      return "tile_r";
-    }
-    if (frame.includes(5)) {
-      return "tile_g";
-    }
-  }
-  if (frame.length == 2) {
-    if (frame.includes(4) && frame.includes(1)) {
-      return "tile_wr";
-    }
-    if (frame.includes(1) && frame.includes(3)) {
-      return "tile_wb";
-    }
-    if (frame.includes(1) && frame.includes(2)) {
-      return "tile_uw";
-    }
-    if (frame.includes(2) && frame.includes(4)) {
-      return "tile_ur";
-    }
-    if (frame.includes(2) && frame.includes(5)) {
-      return "tile_ug";
-    }
-    if (frame.includes(2) && frame.includes(3)) {
-      return "tile_ub";
-    }
-    if (frame.includes(4) && frame.includes(5)) {
-      return "tile_rg";
-    }
-    if (frame.includes(5) && frame.includes(1)) {
-      return "tile_gw";
-    }
-    if (frame.includes(3) && frame.includes(4)) {
-      return "tile_br";
-    }
-    if (frame.includes(3) && frame.includes(5)) {
-      return "tile_bg";
-    }
-  }
-  if (frame.length > 2) {
-    return "tile_multi";
-  }
 }
 
 //
@@ -2307,6 +2103,11 @@ function stripTags(html) {
   var tmp = document.createElement("DIV");
   tmp.innerHTML = html;
   return tmp.textContent || tmp.innerText || "";
+}
+
+//
+function urlDecode(url) {
+  return decodeURIComponent(url.replace(/\+/g, " "));
 }
 
 //
@@ -2438,7 +2239,7 @@ function createDivision(classNames, innerHTML) {
 
 //
 function objectClone(originalObject) {
-    return JSON.parse(JSON.stringify(originalObject));
+  return JSON.parse(JSON.stringify(originalObject));
 }
 
 //
@@ -2567,4 +2368,16 @@ function hypergeometricSignificance(
   );
   let retVal = math.subtract(1, math.multiply(weightedAverage, 2));
   return returnBig ? retVal : math.number(retVal);
+}
+
+function getNextRank(currentRank) {
+  /*
+    Globals used: RANKS
+  */
+  var rankIndex = RANKS.indexOf(currentRank);
+  if (rankIndex < RANKS.length - 1) {
+    return RANKS[rankIndex + 1];
+  } else {
+    return undefined;
+  }
 }

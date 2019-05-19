@@ -1,35 +1,50 @@
 /*
 global
   $,
-  get_colation_set,
-  localDateFormat,
-  getReadableEvent,
-  setsList,
   addCardHover,
   cardsDb,
-  shell,
-  get_set_scryfall,
   collectionSortRarity,
-  addCardHover,
-  createSelect,
-  economyHistory,
-  get_card_image,
   createDivision
+  createSelect,
+  DataScroller,
+  economyHistory,
+  formatNumber,
+  formatPercent,
+  get_colation_set,
+  get_card_art,
+  get_card_image,
+  get_set_scryfall,
+  getReadableEvent,
+  getReadableQuest,
+  ipc_send,
+  localDateFormat,
+  localDayDateFormat,
+  setsList,
+  shell
 */
 
-var loadEconomy = 0;
 var filterEconomy = "All";
+let showArchived = false;
 var daysago = 0;
 var dayList = [];
 
 const differenceInCalendarDays = require("date-fns").differenceInCalendarDays;
 
 class economyDay {
-  constructor(goldEarned = 0, gemsEarned = 0, goldSpent = 0, gemsSpent = 0) {
+  constructor(
+    goldEarned = 0,
+    gemsEarned = 0,
+    goldSpent = 0,
+    gemsSpent = 0,
+    cardsEarned = 0,
+    vaultProgress = 0.0
+  ) {
     this.goldEarned = goldEarned;
     this.gemsEarned = gemsEarned;
     this.goldSpent = goldSpent;
     this.gemsSpent = gemsSpent;
+    this.cardsEarned = cardsEarned;
+    this.vaultProgress = vaultProgress;
   }
 }
 
@@ -58,7 +73,9 @@ function getPrettyContext(context, full = true) {
 
   if (context.startsWith("Quest.Completed")) {
     var questCode = context.substring(16);
-    return full ? `Quest Completed: ${questCode}` : "Quest Completed";
+    return full
+      ? `Quest Completed: ${getReadableQuest(questCode)}`
+      : "Quest Completed";
   }
 
   var pretty = economyTransactionContextsMap[context];
@@ -67,131 +84,168 @@ function getPrettyContext(context, full = true) {
   return pretty || context;
 }
 
-// creates the economy tab.
-// if loadMore is 0 then:
-//   the UI is created and the top 25 results are
-//   loaded based on the current filter.
-// if loadMore is >0 then a further loadMore are added
-//   to the current UI.
-//
-function openEconomyTab(loadMore) {
-  var mainDiv = document.getElementById("ux_0");
-  if (loadMore <= 0) {
-    createEconomyUI(mainDiv);
-    loadMore = 25;
-  }
+function openEconomyTab() {
+  const mainDiv = document.getElementById("ux_0");
+  createEconomyUI(mainDiv);
+  const dataScroller = new DataScroller(
+    mainDiv,
+    renderData,
+    20,
+    economyHistory.changes.length
+  );
+  dataScroller.render(25);
+}
 
-  //console.log("Load more: ", loadEconomy, loadMore, loadEconomy+loadMore);
+// return val = how many rows it rendered into container
+function renderData(container, index) {
+  // for performance reasons, we leave changes order mostly alone
+  // to display most-recent-first, we use a reverse index
+  const revIndex = economyHistory.changes.length - index - 1;
+  let economyId = economyHistory.changes[revIndex];
+  let change = economyHistory[economyId];
 
-  // Loop round economyHistory changes and print out 1 row per change
-  for (
-    var loadEnd = loadEconomy + loadMore;
-    loadEconomy < loadEnd;
-    loadEconomy++
+  if (change === undefined) return 0;
+  if (change.archived && !showArchived) return 0;
+
+  // print out daily summaries but no sub-events
+  if (
+    filterEconomy === "Day Summaries" &&
+    daysago !== differenceInCalendarDays(new Date(), change.date)
   ) {
-    let economyId = economyHistory.changes[loadEconomy];
-    let change = economyHistory[economyId];
-
-    if (change == undefined) continue;
-
-    // print out daily summaries but no sub-events
-    if (
-      filterEconomy === "Day Summaries" &&
-      daysago != differenceInCalendarDays(new Date(), change.date)
-    ) {
-      mainDiv.appendChild(createDayHeader(change));
-      loadEnd++;
-      continue;
-    }
-
-    if (filterEconomy !== "All" && change.context !== filterEconomy) {
-      loadEnd++;
-      continue;
-    }
-
-    if (daysago != differenceInCalendarDays(new Date(), change.date)) {
-      mainDiv.appendChild(createDayHeader(change));
-    }
-
-    var div = createChangeRow(change, economyId);
-    mainDiv.appendChild(div);
-
-    $(".list_economy_awarded").on("mousewheel", function(e) {
-      var delta = parseInt(e.originalEvent.deltaY) / 40;
-      this.scrollLeft += delta;
-      e.preventDefault();
-    });
+    container.appendChild(createDayHeader(change));
+    return 1;
   }
 
-  $(this).off();
-  $("#ux_0").on("scroll", function() {
-    if (
-      Math.round($(this).scrollTop() + $(this).innerHeight()) >=
-      $(this)[0].scrollHeight
-    ) {
-      openEconomyTab(20);
-    }
+  if (filterEconomy !== "All" && change.context !== filterEconomy) {
+    return 0;
+  }
+
+  let rowsAdded = 0;
+
+  if (daysago != differenceInCalendarDays(new Date(), change.date)) {
+    container.appendChild(createDayHeader(change));
+    rowsAdded++;
+  }
+
+  var div = createChangeRow(change, economyId);
+  container.appendChild(div);
+  rowsAdded++;
+
+  $(".list_economy_awarded").on("mousewheel", function(e) {
+    var delta = parseInt(e.originalEvent.deltaY) / 40;
+    this.scrollLeft += delta;
+    e.preventDefault();
   });
 
-  loadEconomy = loadEnd;
+  return rowsAdded;
 }
 
 function createDayHeader(change) {
   daysago = differenceInCalendarDays(new Date(), change.date);
-  let div = createDivision(["economy_title", "flex_item"]);
+  let headerGrid = createDivision(["economy_title"]);
 
-  let flexLeft = createDivision(["flex_item"]);
-  flexLeft.style.lineHeight = "64px";
-
-  if (daysago == 0) flexLeft.innerHTML = "Today";
-  if (daysago == 1) flexLeft.innerHTML = "Yesterday";
-  if (daysago > 1) {
-    let date = new Date(change.date);
-    date = new Date(date.setHours(0, 0, 0, 0));
-    flexLeft.innerHTML = localDayDateFormat(date);
-  }
-
-  let flexRight = createDivision(["economy_day_stats", "flex_item"]);
-
-  let icgo = createDivision(["economy_gold_med"]);
-  icgo.title = "Gold";
-
-  let icge = createDivision(["economy_gems_med"]);
-  icge.style.marginLeft = "24px";
-  icge.title = "Gems";
-
-  let up = createDivision(["economy_up"]);
-
-  let down = createDivision(["economy_down"]);
-
+  const cont = createDivision(["economy_metric"]);
   let tx = createDivision();
   tx.style.lineHeight = "64px";
   tx.classList.add("economy_sub");
+  let up = createDivision(["economy_up"]);
+  let down = createDivision(["economy_down"]);
 
-  flexRight.appendChild(icgo);
-  flexRight.appendChild(up);
-  tx.innerHTML = dayList[daysago].goldEarned;
-  flexRight.appendChild(tx);
+  // Title
+  let gridTitle = createDivision(["flex_item"]);
+  gridTitle.style.gridArea = "1 / 1 / auto / 2";
+  gridTitle.style.lineHeight = "64px";
 
-  flexRight.appendChild(down);
+  if (daysago == 0) gridTitle.innerHTML = "Today";
+  if (daysago == 1) gridTitle.innerHTML = "Yesterday";
+  if (daysago > 1) {
+    let date = new Date(change.date);
+    date = new Date(date.setHours(0, 0, 0, 0));
+    gridTitle.innerHTML = localDayDateFormat(date);
+  }
+
+  // Cards
+  const gridCards = cont.cloneNode(true);
+  gridCards.style.gridArea = "1 / 2 / auto / 3";
+  const icca = tx.cloneNode(true);
+  icca.innerHTML = "Cards:";
+  const catx = tx.cloneNode(true);
+  catx.innerHTML = formatNumber(dayList[daysago].cardsEarned);
+  gridCards.appendChild(icca);
+  const upcontca = createDivision(["economy_delta"]);
+  upcontca.style.width = "auto";
+  upcontca.appendChild(catx);
+  upcontca.appendChild(up.cloneNode(true));
+  gridCards.appendChild(upcontca);
+
+  // Gold
+  const gridGold = cont.cloneNode(true);
+  gridGold.style.gridArea = "1 / 3 / auto / 4";
+  let icgo = createDivision(["economy_gold_med"]);
+  icgo.margin = "3px";
+  icgo.title = "Gold";
+  gridGold.appendChild(icgo);
+
+  const upcontgo = createDivision(["economy_delta"]);
+  tx.innerHTML = formatNumber(dayList[daysago].goldEarned);
+  upcontgo.appendChild(tx);
+  upcontgo.appendChild(up.cloneNode(true));
+  gridGold.appendChild(upcontgo);
+
+  const dncontgo = createDivision(["economy_delta"]);
   let ntx = tx.cloneNode(true);
-  ntx.innerHTML = dayList[daysago].goldSpent;
-  flexRight.appendChild(ntx);
+  ntx.innerHTML = formatNumber(dayList[daysago].goldSpent);
+  dncontgo.appendChild(ntx);
+  dncontgo.appendChild(down.cloneNode(true));
+  gridGold.appendChild(dncontgo);
 
-  flexRight.appendChild(icge);
-  flexRight.appendChild(up.cloneNode(true));
+  // Gems
+  const gridGems = cont.cloneNode(true);
+  gridGems.style.gridArea = "1 / 4 / auto / 5";
+  let icge = createDivision(["economy_gems_med"]);
+  icge.margin = "3px";
+  icge.title = "Gems";
+  gridGems.appendChild(icge);
+
+  const upcontge = createDivision(["economy_delta"]);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = dayList[daysago].gemsEarned;
-  flexRight.appendChild(ntx);
+  ntx.innerHTML = formatNumber(dayList[daysago].gemsEarned);
+  upcontge.appendChild(ntx);
+  upcontge.appendChild(up.cloneNode(true));
+  gridGems.appendChild(upcontge);
 
-  flexRight.appendChild(down.cloneNode(true));
+  const dncontge = createDivision(["economy_delta"]);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = dayList[daysago].gemsSpent;
-  flexRight.appendChild(ntx);
+  ntx.innerHTML = formatNumber(dayList[daysago].gemsSpent);
+  dncontge.appendChild(ntx);
+  dncontge.appendChild(down.cloneNode(true));
+  gridGems.appendChild(dncontge);
 
-  div.appendChild(flexLeft);
-  div.appendChild(flexRight);
-  return div;
+  // Vault
+  const gridVault = cont.cloneNode(true);
+  gridVault.style.gridArea = "1 / 5 / auto / 6";
+  const icva = tx.cloneNode(true);
+  icva.innerHTML = "Vault:";
+  const vatx = tx.cloneNode(true);
+  const rawDelta = dayList[daysago].vaultProgress;
+  // Assume vault can only be redeemed once per day
+  // Rely on modulo arithmetic to derive pure vault gain
+  const delta = rawDelta < 0 ? rawDelta + 100 : rawDelta;
+  const deltaPercent = delta / 100.0;
+  vatx.innerHTML = formatPercent(deltaPercent);
+  gridVault.appendChild(icva);
+  const upcontva = createDivision(["economy_delta"]);
+  upcontva.style.width = "auto";
+  upcontva.appendChild(vatx);
+  upcontva.appendChild(up.cloneNode(true));
+  gridVault.appendChild(upcontva);
+
+  headerGrid.appendChild(gridTitle);
+  headerGrid.appendChild(gridCards);
+  headerGrid.appendChild(gridGold);
+  headerGrid.appendChild(gridGems);
+  headerGrid.appendChild(gridVault);
+  return headerGrid;
 }
 
 function createChangeRow(change, economyId) {
@@ -252,16 +306,43 @@ function createChangeRow(change, economyId) {
 
     flexRight.appendChild(bos);
   } else if (change.contextPretty == "Redeem Wildcard") {
-    var imgUri = "";
-    if (change.delta.wcCommonDelta != undefined) imgUri = "wc_common";
-    if (change.delta.wcUncommonDelta != undefined) imgUri = "wc_uncommon";
-    if (change.delta.wcRareDelta != undefined) imgUri = "wc_rare";
-    if (change.delta.wcMythicDelta != undefined) imgUri = "wc_mythic";
-    if (imgUri != "") {
+    let imgUri = "";
+    let title = "";
+    let count = 0;
+
+    if (change.delta.wcCommonDelta !== undefined) {
+      imgUri = "wc_common";
+      title = "Common Wildcard";
+      count = change.delta.wcCommonDelta;
+    }
+    if (change.delta.wcUncommonDelta !== undefined) {
+      imgUri = "wc_uncommon";
+      title = "Uncommon Wildcard";
+      count = change.delta.wcUncommonDelta;
+    }
+    if (change.delta.wcRareDelta !== undefined) {
+      imgUri = "wc_rare";
+      title = "Rare Wildcard";
+      count = change.delta.wcRareDelta;
+    }
+    if (change.delta.wcMythicDelta !== undefined) {
+      imgUri = "wc_mythic";
+      title = "Mythic Wildcard";
+      count = change.delta.wcMythicDelta;
+    }
+    count = Math.abs(count);
+    if (count) {
       bos = createDivision(["economy_wc"]);
+      bos.title = title;
       bos.style.backgroundImage = "url(../images/" + imgUri + ".png)";
 
+      bon = createDivision();
+      bon.style.lineHeight = "32px";
+      bon.classList.add("economy_sub");
+      bon.innerHTML = "x" + count;
+
       flexBottom.appendChild(bos);
+      flexBottom.appendChild(bon);
     }
 
     checkCardsAdded = true;
@@ -283,7 +364,7 @@ function createChangeRow(change, economyId) {
     bon = createDivision();
     bon.style.lineHeight = "32px";
     bon.classList.add("economy_sub");
-    bon.innerHTML = Math.abs(change.delta.gemsDelta);
+    bon.innerHTML = formatNumber(Math.abs(change.delta.gemsDelta));
 
     flexBottom.appendChild(bos);
     flexBottom.appendChild(bon);
@@ -296,7 +377,7 @@ function createChangeRow(change, economyId) {
     bon = createDivision();
     bon.style.lineHeight = "32px";
     bon.classList.add("economy_sub");
-    bon.innerHTML = Math.abs(change.delta.goldDelta);
+    bon.innerHTML = formatNumber(Math.abs(change.delta.goldDelta));
 
     flexBottom.appendChild(bos);
     flexBottom.appendChild(bon);
@@ -309,7 +390,7 @@ function createChangeRow(change, economyId) {
     bon = createDivision();
     bon.style.lineHeight = "64px";
     bon.classList.add("economy_sub");
-    bon.innerHTML = Math.abs(change.delta.gemsDelta);
+    bon.innerHTML = formatNumber(Math.abs(change.delta.gemsDelta));
 
     flexRight.appendChild(bos);
     flexRight.appendChild(bon);
@@ -322,7 +403,7 @@ function createChangeRow(change, economyId) {
     bon = createDivision();
     bon.style.lineHeight = "64px";
     bon.classList.add("economy_sub");
-    bon.innerHTML = Math.abs(change.delta.goldDelta);
+    bon.innerHTML = formatNumber(Math.abs(change.delta.goldDelta));
 
     flexRight.appendChild(bos);
     flexRight.appendChild(bon);
@@ -351,7 +432,6 @@ function createChangeRow(change, economyId) {
     if (change.delta.wcCommonDelta != undefined) {
       bos = createDivision(["economy_wc"]);
       bos.title = "Common Wildcard";
-      bos.style.margin = "auto 4px";
       bos.style.backgroundImage = "url(../images/wc_common.png)";
       bon = createDivision();
       bon.style.lineHeight = "64px";
@@ -364,7 +444,6 @@ function createChangeRow(change, economyId) {
     if (change.delta.wcUncommonDelta != undefined) {
       bos = createDivision(["economy_wc"]);
       bos.title = "Uncommon Wildcard";
-      bos.style.margin = "auto 4px";
       bos.style.backgroundImage = "url(../images/wc_uncommon.png)";
       bon = createDivision();
       bon.style.lineHeight = "64px";
@@ -377,7 +456,6 @@ function createChangeRow(change, economyId) {
     if (change.delta.wcRareDelta != undefined) {
       bos = createDivision(["economy_wc"]);
       bos.title = "Rare Wildcard";
-      bos.style.margin = "auto 4px";
       bos.style.backgroundImage = "url(../images/wc_rare.png)";
       bon = createDivision();
       bon.style.lineHeight = "64px";
@@ -389,7 +467,6 @@ function createChangeRow(change, economyId) {
     if (change.delta.wcMythicDelta != undefined) {
       bos = createDivision(["economy_wc"]);
       bos.title = "Mythic Wildcard";
-      bos.style.margin = "auto 4px";
       bos.style.backgroundImage = "url(../images/wc_mythic.png)";
       bon = createDivision();
       bon.style.lineHeight = "64px";
@@ -416,10 +493,9 @@ function createChangeRow(change, economyId) {
       d.appendChild(img);
 
       flexRight.appendChild(d);
-      var imgDom = $(img);
-      addCardHover(imgDom, card);
+      addCardHover(img, card);
 
-      imgDom.on("click", function() {
+      img.addEventListener("click", () => {
         if (cardsDb.get(grpId).dfc == "SplitHalf") {
           card = cardsDb.get(card.dfcId);
         }
@@ -460,13 +536,19 @@ function createChangeRow(change, economyId) {
         img.style.width = "39px";
         img.src = get_card_image(card);
 
+        if (card.rarity) {
+          // only uncommons and commons go to vault
+          let vaultProgressDelta =
+            card.rarity === "uncommon" ? 1 / 300 : 1 / 900;
+          img.title = "Vault: +" + formatPercent(vaultProgressDelta);
+        }
+
         d.appendChild(img);
         flexRight.appendChild(d);
 
-        var imgDom = $(img);
-        addCardHover(imgDom, card);
+        addCardHover(img, card);
 
-        imgDom.on("click", function() {
+        img.addEventListener("click", () => {
           if (cardsDb.get(grpId).dfc == "SplitHalf") {
             card = cardsDb.get(card.dfcId);
           }
@@ -509,7 +591,7 @@ function createChangeRow(change, economyId) {
   flexTop.appendChild(
     createDivision(
       [],
-      `<span title="${change.originalContext || ""}">${change.context}</span>`
+      `<span title="${change.originalContext}">${change.contextPretty}</span>`
     )
   );
 
@@ -525,6 +607,38 @@ function createChangeRow(change, economyId) {
   changeRow.appendChild(flexLeft);
   changeRow.appendChild(flexRight);
 
+  var deleteButton = document.createElement("div");
+  deleteButton.classList.add("flex_item");
+  deleteButton.classList.add(economyId + "_del");
+  const archiveClass = change.archived
+    ? "list_item_unarchive"
+    : "list_item_archive";
+  deleteButton.title = change.archived
+    ? "restore"
+    : "archive (will not delete data)";
+  deleteButton.classList.add(archiveClass);
+
+  changeRow.appendChild(deleteButton);
+
+  let archiveCallback = e => {
+    e.stopPropagation();
+    ipc_send("archive_economy", economyId);
+    change.archived = true;
+    economyHistory[economyId] = change;
+    openEconomyTab();
+  };
+  if (change.archived) {
+    archiveCallback = e => {
+      e.stopPropagation();
+      ipc_send("unarchive_economy", economyId);
+      change.archived = false;
+      economyHistory[economyId] = change;
+      openEconomyTab();
+    };
+  }
+
+  deleteButton.addEventListener("click", archiveCallback);
+
   return changeRow;
 }
 
@@ -539,17 +653,24 @@ function createEconomyUI(mainDiv) {
   for (var n = 0; n < economyHistory.changes.length; n++) {
     let economyId = economyHistory.changes[n];
     let change = economyHistory[economyId];
-    if (change == undefined) continue;
+    if (change === undefined) continue;
+    if (change.archived && !showArchived) continue;
 
     if (daysago != differenceInCalendarDays(new Date(), change.date)) {
       daysago = differenceInCalendarDays(new Date(), change.date);
       dayList[daysago] = new economyDay();
-      console.log("new day", change.date);
+      // console.log("new day", change.date);
     }
 
-    let ctx = change.originalContext || change.context;
-    change.contextPretty = getPrettyContext(ctx);
-    change.context = getPrettyContext(ctx, false);
+    // IMPORTANT:
+    // Some old data stores the raw original context in ".originalContext"
+    // All NEW data stores this in ".context" and ".originalContext" is blank.
+
+    // In the below code all three of these values are used.
+    change.originalContext = change.originalContext || change.context;
+    change.contextPretty = getPrettyContext(change.originalContext);
+    change.context = getPrettyContext(change.originalContext, false);
+
     if (!selectItems.includes(change.context)) {
       selectItems.push(change.context);
     }
@@ -564,7 +685,14 @@ function createEconomyUI(mainDiv) {
         dayList[daysago].goldEarned += change.delta.goldDelta;
       else dayList[daysago].goldSpent += Math.abs(change.delta.goldDelta);
 
-      console.log(economyId, "> ", change.date, " > ", change.delta.goldDelta);
+      // console.log(economyId, "> ", change.date, " > ", change.delta.goldDelta);
+    }
+
+    if (change.delta && change.delta.cardsAdded) {
+      dayList[daysago].cardsEarned += change.delta.cardsAdded.length;
+    }
+    if (change.delta && change.delta.vaultProgressDelta) {
+      dayList[daysago].vaultProgress += change.delta.vaultProgressDelta;
     }
   }
 
@@ -576,19 +704,39 @@ function createEconomyUI(mainDiv) {
   //
   var selectdiv = createDivision();
   selectdiv.style.margin = "auto 64px auto 0px";
+  selectdiv.style.display = "flex";
   let options = [...topSelectItems, ...selectItems];
 
-  console.log("filterEconomy", filterEconomy);
+  // console.log("filterEconomy", filterEconomy);
   let select = createSelect(
     selectdiv,
     options,
     filterEconomy,
     res => {
       filterEconomy = res;
-      openEconomyTab(0);
+      openEconomyTab();
     },
     "query_select"
   );
+
+  const archiveCont = document.createElement("label");
+  archiveCont.style.marginTop = "4px";
+  archiveCont.classList.add("check_container", "hover_label");
+  archiveCont.innerHTML = "archived";
+  const archiveCheckbox = document.createElement("input");
+  archiveCheckbox.type = "checkbox";
+  archiveCheckbox.id = "economy_query_archived";
+  archiveCheckbox.addEventListener("click", () => {
+    showArchived = archiveCheckbox.checked;
+    openEconomyTab();
+  });
+  archiveCheckbox.checked = showArchived;
+  archiveCont.appendChild(archiveCheckbox);
+  const archiveSpan = document.createElement("span");
+  archiveSpan.classList.add("checkmark");
+  archiveCont.appendChild(archiveSpan);
+  selectdiv.appendChild(archiveCont);
+
   //$$("#query_select.select_button")[0].innerHTML = filterEconomy;
   div.appendChild(selectdiv);
 
@@ -618,45 +766,40 @@ function createEconomyUI(mainDiv) {
 
   div.appendChild(icwcc);
   let ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.wcCommon;
+  ntx.innerHTML = formatNumber(economyHistory.wcCommon);
   div.appendChild(ntx);
 
   div.appendChild(icwcu);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.wcUncommon;
+  ntx.innerHTML = formatNumber(economyHistory.wcUncommon);
   div.appendChild(ntx);
 
   div.appendChild(icwcr);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.wcRare;
+  ntx.innerHTML = formatNumber(economyHistory.wcRare);
   div.appendChild(ntx);
 
   div.appendChild(icwcm);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.wcMythic;
+  ntx.innerHTML = formatNumber(economyHistory.wcMythic);
   div.appendChild(ntx);
 
   div.appendChild(icgo);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.gold;
+  ntx.innerHTML = formatNumber(economyHistory.gold);
   div.appendChild(ntx);
 
   div.appendChild(icge);
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = economyHistory.gems;
+  ntx.innerHTML = formatNumber(economyHistory.gems);
   div.appendChild(ntx);
 
   ntx = tx.cloneNode(true);
-  ntx.innerHTML = "Vault: " + economyHistory.vault + "%";
+  ntx.innerHTML = "Vault: " + formatPercent(economyHistory.vault / 100);
   ntx.style.marginLeft = "32px";
   div.appendChild(ntx);
 
   mainDiv.appendChild(div);
-
-  var d = createDivision(["list_fill"]);
-  mainDiv.appendChild(d);
-
-  loadEconomy = 0;
   daysago = -1;
 }
 
@@ -664,22 +807,18 @@ function createEconomyUI(mainDiv) {
 // If two IDs are specified then events are retrieved from `economyHistory`
 function compare_economy(a, b) {
   /* global economyHistory */
-  if (a == undefined) return -1;
-  if (b == undefined) return 1;
+  if (a === undefined) return 0;
+  if (b === undefined) return 0;
 
   a = economyHistory[a];
   b = economyHistory[b];
 
-  if (a == undefined) return -1;
-  if (b == undefined) return 1;
+  if (a === undefined) return 0;
+  if (b === undefined) return 0;
 
-  a = Date.parse(a.date);
-  b = Date.parse(b.date);
-  if (a < b) return 1;
-  if (a > b) return -1;
-  return 0;
+  return Date.parse(a.date) - Date.parse(b.date);
 }
 
 module.exports = {
-  open_economy_tab: openEconomyTab
+  openEconomyTab: openEconomyTab
 };
