@@ -42,15 +42,22 @@ let sortingAlgorithm = "Sort by Set";
 let filteredSets;
 let filteredMana;
 let orderedSets;
+let standardSets;
 
 const ALL_CARDS = "All cards";
 const SINGLETONS = "Singletons (at least one)";
 const FULL_SETS = "Full sets (all 4 copies)";
 const BOOSTER_CARDS = "Only in Boosters";
 
+// needs update when Standard rotate
+const STANDARD_FIRST_SET_NAME = "Guilds of Ravnica";
+
+const DEFAULT_SET_NAME = "Complete collection";
+const STANDARD_SETS = "Standard sets";
+
 let countMode = ALL_CARDS;
 let displayMode = BOOSTER_CARDS;
-let defaultSetName = "Complete collection";
+let defaultSetName = DEFAULT_SET_NAME;
 
 //
 function get_collection_export(exportFormat) {
@@ -180,7 +187,8 @@ class SetStats {
 //
 function get_collection_stats() {
   const stats = {
-    complete: new SetStats("complete")
+    complete: new SetStats("complete"),
+    standard: new SetStats("standard")
   };
   Object.keys(db.sets).forEach(
     setName => (stats[setName] = new SetStats(setName))
@@ -196,11 +204,16 @@ function get_collection_stats() {
       owned: 0
     };
     let collation = db.sets[card.set].collation;
+    let isInStandard = standardSets.includes(card.set);
     // add to totals
     stats[card.set][card.rarity].total += 4;
     stats[card.set][card.rarity].unique += 1;
     stats.complete[card.rarity].total += 4;
     stats.complete[card.rarity].unique += 1;
+    if (isInStandard) {
+      stats.standard[card.rarity].total += 4;
+      stats.standard[card.rarity].unique += 1;
+    }
 
     // add cards we own
     if (pd.cards.cards[card.id] !== undefined) {
@@ -211,11 +224,18 @@ function get_collection_stats() {
       stats[card.set][card.rarity].uniqueOwned += 1;
       stats.complete[card.rarity].owned += owned;
       stats.complete[card.rarity].uniqueOwned += 1;
+      if (isInStandard) {
+        stats.standard[card.rarity].owned += owned;
+        stats.standard[card.rarity].uniqueOwned += 1;
+      }
 
       // count complete sets we own
       if (owned == 4) {
         stats[card.set][card.rarity].complete += 1;
         stats.complete[card.rarity].complete += 1;
+        if (isInStandard) {
+          stats.standard[card.rarity].complete += 1;
+        }
       }
     }
 
@@ -231,10 +251,16 @@ function get_collection_stats() {
     );
     stats[card.set][card.rarity].wanted += wanted;
     stats.complete[card.rarity].wanted += wanted;
+    if (isInStandard) {
+      stats.standard[card.rarity].wanted += wanted;
+    }
 
     // count unique cards we know we want across decks
     stats[card.set][card.rarity].uniqueWanted += Math.min(1, wanted);
     stats.complete[card.rarity].uniqueWanted += Math.min(1, wanted);
+    if (isInStandard) {
+      stats.standard[card.rarity].uniqueWanted += Math.min(1, wanted);
+    }
 
     obj.wanted = wanted;
     if (!stats[card.set].cards[colorIndex])
@@ -259,6 +285,14 @@ export function openCollectionTab() {
     );
 
   console.log(orderedSets);
+
+  // Standard sets
+  let standardSetsStartDate = new Date(db.sets[STANDARD_FIRST_SET_NAME].release);
+  standardSets = orderedSets.filter(
+    set =>
+      db.sets[set].collation !== -1 &&
+      new Date(db.sets[set].release) >= standardSetsStartDate
+  );
 
   hideLoadingBars();
   let mainDiv;
@@ -732,9 +766,13 @@ function printStats() {
   countModeSelect.style.textAlign = "left";
   mainstats.appendChild(countModeSelect);
 
-  // Complete collection sats
-  let rs = renderSetStats(stats.complete, "PW", "Complete collection");
+  // Complete collection sets
+  let rs = renderSetStats(stats.complete, "PW", DEFAULT_SET_NAME);
   mainstats.appendChild(rs);
+
+  // Standard sets
+  let ss = renderSetStats(stats.standard, "PW", STANDARD_SETS);
+  mainstats.appendChild(ss);
 
   // Filter out non booster sets ?
   let sets =
@@ -816,7 +854,7 @@ function openSetStats(setStats, setName) {
   substats.appendChild(label);
 
   // Draw completion table for this set
-  if (setName != "Complete collection") {
+  if (setName != DEFAULT_SET_NAME && setName != STANDARD_SETS) {
     let table = createDiv(["completion_table"]);
     for (var color = 0; color < 7; color++) {
       let tile = "";
